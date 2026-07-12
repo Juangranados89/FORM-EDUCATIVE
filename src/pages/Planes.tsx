@@ -111,7 +111,7 @@ export default function Planes() {
             <Wand2 size={16} /> {loading ? 'Generando con IA…' : 'Generar plan con IA'}
           </button>
           <span className="flex items-center gap-1 text-xs font-semibold text-muted">
-            <Sparkles size={13} className="text-primary" /> Claude
+            <Sparkles size={13} className="text-primary" /> Gemini
           </span>
         </div>
 

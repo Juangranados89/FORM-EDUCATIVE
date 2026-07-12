@@ -7,7 +7,6 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { PrismaClient } from '@prisma/client'
 import ExcelJS from 'exceljs'
-import Anthropic from '@anthropic-ai/sdk'
 
 const prisma = new PrismaClient()
 const app = express()
@@ -18,8 +17,26 @@ const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-cambiar'
 const ADMIN_USER = process.env.ADMIN_USER || 'orientador'
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'cambiar123'
 const EXPECTED_STUDENTS = Number(process.env.EXPECTED_STUDENTS || 0)
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || ''
-const anthropic = ANTHROPIC_API_KEY ? new Anthropic({ apiKey: ANTHROPIC_API_KEY }) : null
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ''
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash'
+
+// Llama a Google Gemini y devuelve el JSON parseado de la respuesta.
+async function callGemini(system, userText) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: system }] },
+      contents: [{ role: 'user', parts: [{ text: userText }] }],
+      generationConfig: { responseMimeType: 'application/json', temperature: 0.4, maxOutputTokens: 4096 },
+    }),
+  })
+  const data = await r.json().catch(() => ({}))
+  if (!r.ok) throw new Error(data?.error?.message || `Gemini ${r.status}`)
+  const text = (data.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('') || '{}'
+  return JSON.parse(text)
+}
 
 app.use(express.json({ limit: '64kb' }))
 app.use(cookieParser())
@@ -430,32 +447,30 @@ Reglas:
 - Actividades realistas para un colegio (tutorías, talleres, escuela de padres, rutas de derivación, seguimiento por curso).
 - Si hay casos críticos o ideación, incluye activación de rutas de atención y protocolo de derivación a profesionales de salud mental, sin exponer a estudiantes.
 - La 'nota_seguridad' debe recordar validar el plan con el equipo de orientación/psicología y las líneas de ayuda.
-- Responde SOLO con el objeto JSON del esquema.`
+- Responde SOLO con un objeto JSON con EXACTAMENTE esta forma:
+{
+  "titulo": string,
+  "resumen": string,
+  "objetivos": string[],
+  "actividades": [{ "nombre": string, "descripcion": string, "responsable": string, "plazo": string, "dirigido_a": string }],
+  "indicadores": string[],
+  "recursos": string[],
+  "nota_seguridad": string
+}`
 
 app.post('/api/action-plan/suggest', requireAuth, async (req, res) => {
-  if (!anthropic)
-    return res.status(503).json({ error: 'Falta configurar ANTHROPIC_API_KEY en el servidor.' })
+  if (!GEMINI_API_KEY)
+    return res.status(503).json({ error: 'Falta configurar GEMINI_API_KEY en el servidor.' })
   try {
     const scope = req.body?.scope === 'curso' ? 'curso' : 'general'
     const target = String(req.body?.target || '')
     const ctx = await buildContext(scope, target)
     if (!ctx) return res.status(400).json({ error: 'No hay respuestas para generar un plan.' })
 
-    const message = await anthropic.messages.create({
-      model: 'claude-opus-4-8',
-      max_tokens: 8000,
-      thinking: { type: 'adaptive' },
-      output_config: { effort: 'medium', format: { type: 'json_schema', schema: PLAN_SCHEMA } },
-      system: PLAN_SYSTEM,
-      messages: [
-        {
-          role: 'user',
-          content: `Datos agregados y anónimos (${ctx.alcance}):\n${JSON.stringify(ctx, null, 2)}\n\nDiseña el plan de acción de bienestar emocional.`,
-        },
-      ],
-    })
-    const text = message.content.find((b) => b.type === 'text')?.text || '{}'
-    const plan = JSON.parse(text)
+    const plan = await callGemini(
+      PLAN_SYSTEM,
+      `Datos agregados y anónimos (${ctx.alcance}):\n${JSON.stringify(ctx, null, 2)}\n\nDiseña el plan de acción de bienestar emocional.`,
+    )
     res.json({ plan, context: ctx, scope, target })
   } catch (e) {
     console.error('IA plan error:', e?.message || e)
