@@ -422,7 +422,8 @@ function MiniBar({ pct, color }: { pct: number; color: string }) {
 function CoursesCard({ cursos }: { cursos: NonNullable<Stats['cursos']> }) {
   return (
     <Card title="Resultados por curso" footer={{ label: 'Ver todos los cursos', to: '/dashboard/cursos' }}>
-      <table className="w-full text-left text-xs">
+      <div className="overflow-x-auto pb-1">
+      <table className="w-full min-w-[620px] text-left text-xs">
         <thead>
           <tr className="border-b border-line text-muted">
             {['Curso', 'Respuestas', 'Bienestar general', 'Riesgo moderado', 'Riesgo alto', 'Acciones'].map(
@@ -457,6 +458,7 @@ function CoursesCard({ cursos }: { cursos: NonNullable<Stats['cursos']> }) {
           ))}
         </tbody>
       </table>
+      </div>
     </Card>
   )
 }

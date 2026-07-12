@@ -41,6 +41,7 @@ const STEPS = [
 const GRADES = ['5°', '6°', '7°', '8°', '9°', '10°', '11°']
 const COURSES = ['A', 'B', 'C', 'D']
 const AGES = ['10-11', '12-13', '14-15', '16-18']
+const DASH_ASSET = (name: string) => `${import.meta.env.BASE_URL}assets/dashboard/${name}`
 
 const qById = (id: string): Question => QUESTIONS.find((q) => q.id === id)!
 
@@ -364,7 +365,7 @@ export default function SurveyWeb() {
         <aside className="hidden w-80 shrink-0 flex-col gap-4 px-5 py-6 xl:flex">
           <div className="flex h-64 w-full items-center justify-center overflow-hidden rounded-2xl bg-primary/5 p-3">
             <img
-              src={ASSET('home/scene_bg.png')}
+              src={ASSET('home/school.png')}
               alt="Ilustración de bienestar escolar"
               className="h-full w-full object-contain"
             />
@@ -402,7 +403,11 @@ export default function SurveyWeb() {
               Si te sientes triste, abrumado o necesitas apoyo, no estás solo. Aquí
               estamos para ayudarte.
             </p>
-            <Illustration src={ASSET('q_apoyo.png')} alt="" className="mx-auto mt-2 h-24" />
+            <Illustration
+              src={DASH_ASSET('help_orientadora_full.png')}
+              alt="Conversación confidencial con orientación"
+              className="mx-auto mt-3 h-32 w-full"
+            />
           </div>
         </aside>
       </div>
