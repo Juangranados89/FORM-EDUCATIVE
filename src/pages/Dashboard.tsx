@@ -105,8 +105,9 @@ function Content({ stats }: { stats: Stats }) {
         <FactorsCard factores={stats.factores!} />
         <WordCloudCard nube={stats.nube!} />
       </div>
-      <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-2">
+      <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-3">
         <AlertBanner n={k.riesgoAltoN} />
+        <ApoyoCard apoyo={stats.apoyo!} />
         <NextStepsCard />
       </div>
     </>
@@ -244,7 +245,12 @@ function Header({ onLogout }: { onLogout: () => void }) {
         <div className="flex flex-wrap gap-2.5">
           <HeaderBtn icon={<Calendar size={15} />} label={`Hasta ${hoy}`} chevron />
           <HeaderBtn icon={<Filter size={15} />} label="Filtros" />
-          <HeaderBtn icon={<Download size={15} />} label="Exportar" />
+          <a
+            href="/api/export.csv"
+            className="flex items-center gap-2 rounded-xl bg-primary px-3.5 py-2 text-sm font-semibold text-white shadow-card transition hover:brightness-105"
+          >
+            <Download size={15} /> Exportar
+          </a>
         </div>
       </div>
     </div>
@@ -696,6 +702,39 @@ function AlertBanner({ n }: { n: number }) {
       <button className="flex shrink-0 items-center gap-1.5 rounded-xl border border-coral/40 bg-surface px-3.5 py-2 text-xs font-bold text-coral">
         Ver estudiantes <ArrowRight size={13} />
       </button>
+    </div>
+  )
+}
+
+function ApoyoCard({ apoyo }: { apoyo: NonNullable<Stats['apoyo']> }) {
+  const items = [
+    { label: 'Sí, lo necesito pronto', n: apoyo.si_pronto, color: '#FF6B7A' },
+    { label: 'Tal vez más adelante', n: apoyo.tal_vez, color: '#FFD166' },
+    { label: 'No por ahora', n: apoyo.no_ahora, color: '#45B36B' },
+  ]
+  const total = items.reduce((s, i) => s + i.n, 0) || 1
+  return (
+    <div className="rounded-2xl bg-surface p-5 shadow-card">
+      <p className="font-display text-[15px] font-bold text-ink">
+        Apoyo solicitado
+        <span className="ml-1.5 font-sans text-xs font-normal text-muted">
+          (¿hablarías con orientación?)
+        </span>
+      </p>
+      <div className="mt-3 space-y-2.5">
+        {items.map((i) => (
+          <div key={i.label} className="flex items-center gap-2.5 text-xs">
+            <span className="w-40 shrink-0 font-semibold">{i.label}</span>
+            <div className="h-2 min-w-0 flex-1 rounded-full bg-line">
+              <div
+                className="h-2 rounded-full"
+                style={{ width: `${Math.round((i.n / total) * 100)}%`, background: i.color }}
+              />
+            </div>
+            <span className="w-6 text-right font-bold">{i.n}</span>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

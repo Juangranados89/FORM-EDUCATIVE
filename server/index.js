@@ -296,6 +296,34 @@ app.get('/api/stats', requireAuth, async (_req, res) => {
   }
 })
 
+/* ================= Exportar CSV (protegido, abre en Excel) ================= */
+app.get('/api/export.csv', requireAuth, async (_req, res) => {
+  try {
+    const rows = await prisma.response.findMany({ orderBy: { createdAt: 'asc' } })
+    const QIDS = Object.keys(SCORES)
+    const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`
+    const header = [
+      'fecha', 'grado', 'curso', 'jornada', 'edad',
+      ...QIDS, 'categorias', 'comentario', 'apoyo', 'puntaje', 'nivel_riesgo', 'alerta_critica',
+    ]
+    const lines = rows.map((r) =>
+      [
+        r.createdAt.toISOString(), r.grade, r.course, r.shift, r.ageRange,
+        ...QIDS.map((q) => r.answers?.[q] ?? ''),
+        r.categories.join(' | '), r.openText, r.support, r.score, r.riskLevel,
+        r.criticalFlag ? 'SI' : 'NO',
+      ].map(esc).join(';'),
+    )
+    const csv = '﻿' + header.map(esc).join(';') + '\n' + lines.join('\n')
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+    res.setHeader('Content-Disposition', 'attachment; filename="bienestar-escolar.csv"')
+    res.send(csv)
+  } catch (e) {
+    console.error(e)
+    res.status(500).json({ error: 'Error al exportar' })
+  }
+})
+
 /* ================= Frontend estático ================= */
 const dist = path.join(__dirname, '..', 'dist')
 app.use(express.static(dist))
