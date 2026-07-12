@@ -7,6 +7,11 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { PrismaClient } from '@prisma/client'
 import ExcelJS from 'exceljs'
+import {
+  buildActionPlanDocx,
+  buildActionPlanPptx,
+  isActionPlan,
+} from './actionPlanExports.js'
 
 const prisma = new PrismaClient()
 const app = express()
@@ -21,21 +26,81 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ''
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash'
 
 // Llama a Google Gemini y devuelve el JSON parseado de la respuesta.
-async function callGemini(system, userText) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`
+async function callGemini(system, userText, responseSchema) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent`
   const r = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: system }] },
       contents: [{ role: 'user', parts: [{ text: userText }] }],
-      generationConfig: { responseMimeType: 'application/json', temperature: 0.4, maxOutputTokens: 4096 },
+      generationConfig: {
+        responseMimeType: 'application/json',
+        responseSchema,
+        temperature: 0.4,
+        maxOutputTokens: 4096,
+      },
     }),
   })
   const data = await r.json().catch(() => ({}))
   if (!r.ok) throw new Error(data?.error?.message || `Gemini ${r.status}`)
-  const text = (data.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('') || '{}'
-  return JSON.parse(text)
+  const candidate = data.candidates?.[0]
+  const text = (candidate?.content?.parts || []).map((p) => p.text || '').join('')
+  if (!text) {
+    const reason = candidate?.finishReason || data?.promptFeedback?.blockReason || 'respuesta vacía'
+    throw new Error(`Gemini no devolvió contenido (${reason})`)
+  }
+  try {
+    return JSON.parse(text)
+  } catch {
+    throw new Error('Gemini devolvió una respuesta que no es JSON válido')
+  }
+}
+
+// Repara valores creados por clientes antiguos que enviaron UTF-8 interpretado como Latin-1.
+function repairText(value) {
+  const text = String(value ?? '').trim()
+  if (!/[ÃÂâð]/.test(text)) return text
+  try {
+    return Buffer.from(text, 'latin1').toString('utf8')
+  } catch {
+    return text
+  }
+}
+
+function repairGrade(value) {
+  const text = repairText(value).replace(/º/g, '°')
+  const match = text.match(/^(5|6|7|8|9|10|11)(?:°|�)?$/)
+  return match ? `${match[1]}°` : text
+}
+
+function normalizeRow(row) {
+  return {
+    ...row,
+    grade: repairGrade(row.grade),
+    course: repairText(row.course).toUpperCase(),
+    shift: repairText(row.shift).toLowerCase(),
+  }
+}
+
+function gradeVariants(value) {
+  const grade = repairGrade(value)
+  const number = grade.replace(/[^0-9]/g, '')
+  return number ? [...new Set([grade, `${number}º`, `${number}Â°`, `${number}�`, number])] : [grade]
+}
+
+const VALID_GRADES = new Set(['5°', '6°', '7°', '8°', '9°', '10°', '11°'])
+const VALID_COURSES = new Set(['A', 'B', 'C', 'D'])
+const VALID_SHIFTS = new Set(['mañana', 'tarde'])
+const VALID_AGES = new Set(['10-11', '12-13', '14-15', '16-18'])
+
+function cleanProfile(profile = {}) {
+  return {
+    grade: repairGrade(profile.grade),
+    course: repairText(profile.course).toUpperCase(),
+    shift: repairText(profile.shift).toLowerCase(),
+    ageRange: repairText(profile.ageRange),
+  }
 }
 
 app.use(express.json({ limit: '64kb' }))
@@ -137,8 +202,14 @@ app.get('/api/auth/me', requireAuth, (req, res) => res.json({ user: req.user.sub
 app.post('/api/responses', async (req, res) => {
   try {
     const { profile, answers, categories = [], openText = '', support } = req.body || {}
-    if (!profile?.grade || !profile?.course || !profile?.shift || !profile?.ageRange)
-      return res.status(400).json({ error: 'Datos del estudiante incompletos' })
+    const clean = cleanProfile(profile)
+    if (
+      !VALID_GRADES.has(clean.grade) ||
+      !VALID_COURSES.has(clean.course) ||
+      !VALID_SHIFTS.has(clean.shift) ||
+      !VALID_AGES.has(clean.ageRange)
+    )
+      return res.status(400).json({ error: 'Los datos de grado, curso, jornada o edad no son válidos' })
     if (!SUPPORTS.includes(support)) return res.status(400).json({ error: 'Respuesta de apoyo inválida' })
     const cats = categories.filter((c) => CATEGORIES.includes(c))
     const computed = computeScore(answers || {})
@@ -146,10 +217,10 @@ app.post('/api/responses', async (req, res) => {
     const riskLevel = riskOf(computed.score, computed.critical, cats)
     const saved = await prisma.response.create({
       data: {
-        grade: String(profile.grade).slice(0, 10),
-        course: String(profile.course).slice(0, 10),
-        shift: String(profile.shift).slice(0, 10),
-        ageRange: String(profile.ageRange).slice(0, 10),
+        grade: clean.grade,
+        course: clean.course,
+        shift: clean.shift,
+        ageRange: clean.ageRange,
         answers,
         categories: cats,
         openText: String(openText).slice(0, 2000),
@@ -234,8 +305,10 @@ app.get('/api/stats', requireAuth, async (_req, res) => {
     // Cursos
     const byCourse = new Map()
     for (const r of rows) {
-      const k = `${r.grade}${r.course}`
-      const c = byCourse.get(k) || { n: 0, wb: 0, alto: 0, mod: 0 }
+      const grade = repairGrade(r.grade)
+      const course = repairText(r.course).toUpperCase()
+      const k = `${grade}|${course}`
+      const c = byCourse.get(k) || { grade, course, n: 0, wb: 0, alto: 0, mod: 0 }
       c.n++
       c.wb += wellbeing(r.score)
       if (r.riskLevel === 'alto') c.alto++
@@ -245,8 +318,10 @@ app.get('/api/stats', requireAuth, async (_req, res) => {
     const maxN = Math.max(...[...byCourse.values()].map((c) => c.n))
     const cursos = [...byCourse.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([curso, c]) => ({
-        curso,
+      .map(([, c]) => ({
+        curso: `${c.grade}${c.course}`,
+        grade: c.grade,
+        course: c.course,
         n: c.n,
         participacion: Math.round((c.n / maxN) * 100),
         bienestar: Math.round(c.wb / c.n),
@@ -320,7 +395,7 @@ app.get('/api/stats', requireAuth, async (_req, res) => {
 /* ================= Filtros compartidos ================= */
 function buildWhere(q) {
   const where = {}
-  if (q.grade) where.grade = q.grade
+  if (q.grade) where.grade = { in: gradeVariants(q.grade) }
   if (q.course) where.course = q.course
   if (q.shift) where.shift = q.shift
   if (q.risk) where.riskLevel = q.risk
@@ -340,7 +415,7 @@ app.get('/api/responses', requireAuth, async (req, res) => {
       orderBy: { createdAt: 'desc' },
       take: 500,
     })
-    res.json({ rows })
+    res.json({ rows: rows.map(normalizeRow) })
   } catch (e) {
     console.error(e)
     res.status(500).json({ error: 'Error al listar respuestas' })
@@ -352,6 +427,7 @@ app.get('/api/alerts', requireAuth, async (_req, res) => {
   try {
     const rows = await prisma.response.findMany({ orderBy: { createdAt: 'desc' } })
     const alerts = rows
+      .map(normalizeRow)
       .map((r) => {
         const reasons = []
         if (r.categories.includes('planificacion')) reasons.push('Planificación')
@@ -381,8 +457,17 @@ const CRIT_LABEL = {
 
 // Arma un resumen compacto de los datos para pasar como contexto a la IA.
 async function buildContext(scope, target) {
-  const where = scope === 'curso' && target ? buildWhere({ grade: target.slice(0, -1), course: target.slice(-1) }) : {}
-  const rows = await prisma.response.findMany({ where })
+  const allRows = await prisma.response.findMany()
+  const targetGrade = repairGrade(target.slice(0, -1))
+  const targetCourse = repairText(target.slice(-1)).toUpperCase()
+  const rows =
+    scope === 'curso' && target
+      ? allRows.filter(
+          (r) =>
+            repairGrade(r.grade) === targetGrade &&
+            repairText(r.course).toUpperCase() === targetCourse,
+        )
+      : allRows
   const total = rows.length
   if (total === 0) return null
   const pct = (n) => Math.round((n / total) * 100)
@@ -470,11 +555,28 @@ app.post('/api/action-plan/suggest', requireAuth, async (req, res) => {
     const plan = await callGemini(
       PLAN_SYSTEM,
       `Datos agregados y anónimos (${ctx.alcance}):\n${JSON.stringify(ctx, null, 2)}\n\nDiseña el plan de acción de bienestar emocional.`,
+      PLAN_SCHEMA,
     )
+    const validPlan =
+      plan &&
+      typeof plan.titulo === 'string' &&
+      typeof plan.resumen === 'string' &&
+      Array.isArray(plan.objetivos) &&
+      Array.isArray(plan.actividades) &&
+      Array.isArray(plan.indicadores) &&
+      Array.isArray(plan.recursos) &&
+      typeof plan.nota_seguridad === 'string'
+    if (!validPlan) throw new Error('Gemini devolvió un plan incompleto')
     res.json({ plan, context: ctx, scope, target })
   } catch (e) {
     console.error('IA plan error:', e?.message || e)
-    res.status(502).json({ error: 'No se pudo generar el plan con IA. Intenta de nuevo.' })
+    const detail = String(e?.message || '')
+    const configError = /API key|quota|billing|model|permission|not found|429|403|404/i.test(detail)
+    res.status(502).json({
+      error: configError
+        ? `Gemini rechazó la solicitud: ${detail}`
+        : 'Gemini no pudo generar un plan válido. Intenta de nuevo.',
+    })
   }
 })
 
@@ -504,6 +606,75 @@ app.post('/api/action-plans', requireAuth, async (req, res) => {
   } catch (e) {
     console.error(e)
     res.status(500).json({ error: 'Error al guardar el plan' })
+  }
+})
+
+app.put('/api/action-plans/:id', requireAuth, async (req, res) => {
+  try {
+    const { title, content, status, scope, target } = req.body || {}
+    if (!isActionPlan(content) || !String(title || '').trim())
+      return res.status(400).json({ error: 'El plan no tiene una estructura válida.' })
+    const validStatus = ['propuesto', 'en_curso', 'completado'].includes(status)
+      ? status
+      : 'propuesto'
+    const plan = await prisma.actionPlan.update({
+      where: { id: req.params.id },
+      data: {
+        title: String(title).trim().slice(0, 200),
+        content,
+        status: validStatus,
+        scope: scope === 'curso' ? 'curso' : 'general',
+        target: scope === 'curso' ? String(target || '').slice(0, 20) : '',
+      },
+    })
+    res.json({ ok: true, plan })
+  } catch (e) {
+    if (e?.code === 'P2025') return res.status(404).json({ error: 'El plan ya no existe.' })
+    console.error(e)
+    res.status(500).json({ error: 'No se pudo actualizar el plan.' })
+  }
+})
+
+app.delete('/api/action-plans/:id', requireAuth, async (req, res) => {
+  try {
+    await prisma.actionPlan.delete({ where: { id: req.params.id } })
+    res.json({ ok: true })
+  } catch (e) {
+    if (e?.code === 'P2025') return res.status(404).json({ error: 'El plan ya no existe.' })
+    console.error(e)
+    res.status(500).json({ error: 'No se pudo eliminar el plan.' })
+  }
+})
+
+app.post('/api/action-plan/export/:format', requireAuth, async (req, res) => {
+  try {
+    const { plan, context } = req.body || {}
+    if (!isActionPlan(plan)) return res.status(400).json({ error: 'El plan no tiene una estructura válida.' })
+    const format = req.params.format
+    const slug = String(plan.titulo || 'plan-de-accion')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .toLowerCase()
+      .slice(0, 70) || 'plan-de-accion'
+
+    if (format === 'docx') {
+      const file = await buildActionPlanDocx(plan, context)
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+      res.setHeader('Content-Disposition', `attachment; filename="${slug}.docx"`)
+      return res.send(file)
+    }
+    if (format === 'pptx') {
+      const file = await buildActionPlanPptx(plan, context)
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation')
+      res.setHeader('Content-Disposition', `attachment; filename="${slug}.pptx"`)
+      return res.send(file)
+    }
+    return res.status(400).json({ error: 'Formato no compatible.' })
+  } catch (e) {
+    console.error('Plan export error:', e)
+    res.status(500).json({ error: 'No se pudo generar el archivo.' })
   }
 })
 
@@ -563,7 +734,7 @@ app.get('/api/export.xlsx', requireAuth, async (req, res) => {
     ]
     ws.columns = cols
 
-    rows.forEach((r) => {
+    rows.map(normalizeRow).forEach((r) => {
       ws.addRow({
         fecha: r.createdAt,
         grado: r.grade,
@@ -670,7 +841,7 @@ app.get('/api/export.csv', requireAuth, async (_req, res) => {
       'fecha', 'grado', 'curso', 'jornada', 'edad',
       ...QIDS, 'categorias', 'comentario', 'apoyo', 'puntaje', 'nivel_riesgo', 'alerta_critica',
     ]
-    const lines = rows.map((r) =>
+    const lines = rows.map(normalizeRow).map((r) =>
       [
         r.createdAt.toISOString(), r.grade, r.course, r.shift, r.ageRange,
         ...QIDS.map((q) => r.answers?.[q] ?? ''),

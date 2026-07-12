@@ -12,6 +12,22 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T
 }
 
+async function reqFile(path: string, data: unknown): Promise<{ blob: Blob; filename: string }> {
+  const r = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    body: JSON.stringify(data),
+  })
+  if (!r.ok) {
+    const body = await r.json().catch(() => ({}))
+    throw new ApiError(r.status, body?.error || 'No se pudo generar el archivo')
+  }
+  const disposition = r.headers.get('Content-Disposition') || ''
+  const filename = disposition.match(/filename="([^"]+)"/)?.[1] || 'plan-de-accion'
+  return { blob: await r.blob(), filename }
+}
+
 export class ApiError extends Error {
   status: number
   constructor(status: number, message: string) {
@@ -52,6 +68,17 @@ export const api = {
       body: JSON.stringify(data),
     }),
   actionPlans: () => req<{ plans: SavedPlan[] }>('/api/action-plans'),
+  updatePlan: (id: string, data: Omit<SavedPlan, 'id' | 'createdAt'>) =>
+    req<{ ok: true; plan: SavedPlan }>(`/api/action-plans/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  deletePlan: (id: string) =>
+    req<{ ok: true }>(`/api/action-plans/${id}`, { method: 'DELETE' }),
+  exportPlan: (
+    format: 'docx' | 'pptx',
+    data: { plan: ActionPlanContent; context?: PlanContext | null },
+  ) => reqFile(`/api/action-plan/export/${format}`, data),
 }
 
 export type ActionPlanContent = {
@@ -120,6 +147,8 @@ export type Stats = {
   tendencia?: { mes: string; valor: number }[]
   cursos?: {
     curso: string
+    grade: string
+    course: string
     n: number
     participacion: number
     bienestar: number

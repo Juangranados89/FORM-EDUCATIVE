@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
   AlertTriangle,
@@ -8,10 +9,12 @@ import {
   Heart,
   Home,
   LogOut,
+  Menu,
   MessageSquareText,
   ScanSearch,
   SlidersHorizontal,
   UserRound,
+  X,
 } from 'lucide-react'
 import { api } from '../../lib/api'
 
@@ -46,6 +49,7 @@ export default function Shell({
   children: React.ReactNode
 }) {
   const nav = useNavigate()
+  const [mobileOpen, setMobileOpen] = useState(false)
   return (
     <div className="flex min-h-screen bg-bg text-ink">
       {/* Sidebar */}
@@ -77,38 +81,81 @@ export default function Shell({
           ))}
         </nav>
 
-        <div className="mt-auto rounded-2xl bg-[#fff7ec] p-4">
+        <div className="mt-auto rounded-2xl border border-orange/15 bg-white p-4 shadow-card">
           <p className="font-display text-[15px] font-bold">¿Necesitas ayuda?</p>
           <p className="mt-1 text-xs text-muted">Recursos y guías para acompañar a los estudiantes.</p>
-          <img src={DASSET('help_orientadora.png')} alt="" className="mx-auto mt-2 h-20 object-contain" />
+          <div className="mx-auto mt-3 flex h-24 w-full items-center justify-center overflow-hidden rounded-xl bg-orange/5 p-2">
+            <img src={DASSET('help_orientadora_full.png')} alt="Orientación y acompañamiento" className="h-full w-full object-contain" />
+          </div>
         </div>
       </aside>
 
-      {/* Contenido */}
-      <main className="min-w-0 flex-1 px-6 pb-8 pt-4">
-        <div className="flex items-center justify-end gap-3 py-2">
-          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-orange/20 text-orange">
-            <UserRound size={18} />
-          </span>
-          <div className="text-xs leading-tight">
-            <p className="font-bold">Orientador(a)</p>
-            <p className="text-muted">Bienestar Escolar</p>
-          </div>
+      {mobileOpen && (
+        <div className="fixed inset-0 z-50 flex lg:hidden">
           <button
-            onClick={() => api.logout().then(() => nav('/login'))}
-            className="flex items-center gap-1.5 rounded-xl border border-line bg-surface px-3 py-1.5 text-xs font-bold text-muted hover:text-coral"
-          >
-            <LogOut size={14} /> Salir
-          </button>
+            className="absolute inset-0 bg-ink/35 backdrop-blur-sm"
+            onClick={() => setMobileOpen(false)}
+            aria-label="Cerrar menú"
+          />
+          <aside className="relative flex h-full w-[min(82vw,320px)] flex-col overflow-y-auto bg-white px-4 pb-5 pt-5 shadow-soft">
+            <div className="flex items-center justify-between gap-3 px-1">
+              <div className="flex items-center gap-2.5">
+                <Logo />
+                <p className="font-display text-lg font-bold leading-tight text-primary">Bienestar Escolar</p>
+              </div>
+              <button onClick={() => setMobileOpen(false)} className="rounded-xl bg-bg p-2 text-muted" aria-label="Cerrar menú de navegación">
+                <X size={20} />
+              </button>
+            </div>
+            <p className="mt-6 px-1 text-[11px] font-bold uppercase tracking-wide text-muted">Resultados</p>
+            <nav className="mt-1 space-y-1">
+              {RESULTADOS.map((n) => <NavItem key={n.to} {...n} onNavigate={() => setMobileOpen(false)} />)}
+            </nav>
+            <p className="mt-5 px-1 text-[11px] font-bold uppercase tracking-wide text-muted">Gestión</p>
+            <nav className="mt-1 space-y-1">
+              {GESTION.map((n) => <NavItem key={n.to} {...n} onNavigate={() => setMobileOpen(false)} />)}
+            </nav>
+          </aside>
         </div>
+      )}
 
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <h1 className="font-display text-3xl font-bold">{title}</h1>
-            {subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}
+      {/* Contenido */}
+      <main className="min-w-0 flex-1 px-4 pb-8 pt-4 sm:px-6">
+        <header className="overflow-hidden rounded-3xl border border-white/80 bg-gradient-to-r from-white via-white to-primary/10 px-5 py-5 shadow-card sm:px-7">
+          <div className="flex items-center justify-between gap-4 border-b border-line/70 pb-4">
+            <div className="flex min-w-0 items-center gap-2">
+              <button onClick={() => setMobileOpen(true)} className="rounded-xl border border-line bg-white p-2 text-primary lg:hidden" aria-label="Abrir menú de navegación">
+                <Menu size={18} />
+              </button>
+              <div className="hidden items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-primary sm:flex">
+                <span className="h-2 w-2 rounded-full bg-green" /> Centro de análisis y gestión
+              </div>
+              <span className="truncate text-sm font-bold text-primary sm:hidden">Bienestar Escolar</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-orange/15 text-orange">
+                <UserRound size={19} />
+              </span>
+              <div className="hidden text-xs leading-tight sm:block">
+                <p className="font-bold">Orientador(a)</p>
+                <p className="text-muted">Bienestar Escolar</p>
+              </div>
+              <button
+                onClick={() => api.logout().then(() => nav('/login'))}
+                className="flex items-center gap-1.5 rounded-xl border border-line bg-white px-3 py-2 text-xs font-bold text-muted transition hover:border-coral/30 hover:text-coral"
+              >
+                <LogOut size={14} /> Salir
+              </button>
+            </div>
           </div>
-          {actions && <div className="flex flex-wrap gap-2.5">{actions}</div>}
-        </div>
+          <div className="mt-5 flex flex-wrap items-end justify-between gap-4">
+            <div className="max-w-3xl">
+              <h1 className="font-display text-3xl font-bold tracking-tight sm:text-4xl">{title}</h1>
+              {subtitle && <p className="mt-2 text-sm leading-relaxed text-muted sm:text-base">{subtitle}</p>}
+            </div>
+            {actions && <div className="flex flex-wrap gap-2.5">{actions}</div>}
+          </div>
+        </header>
 
         {children}
       </main>
@@ -116,7 +163,7 @@ export default function Shell({
   )
 }
 
-function NavItem({ to, label, icon, soon }: NavDef) {
+function NavItem({ to, label, icon, soon, onNavigate }: NavDef & { onNavigate?: () => void }) {
   if (soon)
     return (
       <div className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-semibold text-muted/60">
@@ -130,6 +177,7 @@ function NavItem({ to, label, icon, soon }: NavDef) {
   return (
     <NavLink
       to={to}
+      onClick={onNavigate}
       end={to === '/dashboard'}
       className={({ isActive }) =>
         `flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-semibold transition ${
