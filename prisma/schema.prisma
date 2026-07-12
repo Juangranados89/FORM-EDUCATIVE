@@ -1,0 +1,31 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Respuesta de la encuesta (confidencial: sin nombre ni apellido).
+model Response {
+  id           String   @id @default(cuid())
+  grade        String
+  course       String
+  shift        String
+  ageRange     String
+  // Respuestas cerradas: { colegio: "neutral", estres: "poco", ... }
+  answers      Json
+  // Categorías marcadas en la reflexión (ideacion, planificacion, ...)
+  categories   String[]
+  openText     String   @default("")
+  support      String
+  // Calculados en el servidor (fuente de verdad para el panel)
+  score        Int
+  riskLevel    String // bajo | moderado | alto
+  criticalFlag Boolean
+  createdAt    DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([grade, course])
+}
