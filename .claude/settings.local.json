@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Read(//c/Users/Juan.Granados/Downloads/**)",
-      "Bash(mkdir -p /tmp/esc_zip)",
-      "Bash(unzip -o ENCUESTAS_EDU_PROMPTS_Y_ASSETS.zip -d /tmp/esc_zip)"
-    ]
-  }
-}
