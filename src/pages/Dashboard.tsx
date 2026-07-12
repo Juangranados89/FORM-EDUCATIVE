@@ -129,7 +129,7 @@ function Delta({ value, invert }: { value: number; invert?: boolean }) {
 function KpiRow({ k }: { k: Kpis }) {
   return (
     <div className="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
-      <div className="rounded-2xl bg-surface p-5 shadow-card">
+      <Link to="/dashboard/estudiantes" className="group rounded-2xl border border-white bg-white p-5 shadow-card transition hover:-translate-y-0.5 hover:border-primary/20">
         <div className="flex items-start justify-between">
           <div>
             <p className="text-sm font-semibold text-muted">Total de respuestas</p>
@@ -155,7 +155,8 @@ function KpiRow({ k }: { k: Kpis }) {
             </div>
           </>
         )}
-      </div>
+        <p className="mt-3 flex items-center gap-1 text-xs font-bold text-primary opacity-80 group-hover:opacity-100">Revisar participación <ArrowRight size={12} /></p>
+      </Link>
 
       <KpiCard
         tone="green"
@@ -165,7 +166,7 @@ function KpiRow({ k }: { k: Kpis }) {
         delta={<Delta value={k.bienestarDelta} />}
         face={DASSET('kpi_happy.png')}
       />
-      <div className="rounded-2xl bg-[#fffaf0] p-5 shadow-card">
+      <Link to="/dashboard/estudiantes?risk=moderado" className="group rounded-2xl border border-orange/10 bg-white p-5 shadow-card transition hover:-translate-y-0.5 hover:border-orange/30">
         <div className="flex items-start justify-between">
           <div>
             <p className="text-sm font-bold text-orange">Riesgo moderado</p>
@@ -176,10 +177,11 @@ function KpiRow({ k }: { k: Kpis }) {
             <AlertTriangle size={20} />
           </span>
         </div>
-        <div className="mt-2">
+        <div className="mt-2 border-t border-line/70 pt-2">
           <Delta value={k.riesgoModeradoDelta} invert />
         </div>
-      </div>
+        <p className="mt-2 flex items-center gap-1 text-xs font-bold text-orange">Ver estudiantes <ArrowRight size={12} /></p>
+      </Link>
       <KpiCard
         tone="coral"
         title="Riesgo alto"
@@ -208,8 +210,9 @@ function KpiCard({
   face: string
 }) {
   return (
-    <div
-      className={`rounded-2xl p-5 shadow-card ${tone === 'green' ? 'bg-[#f2fbf5]' : 'bg-[#fff3f4]'}`}
+    <Link
+      to={tone === 'green' ? '/dashboard/bienestar' : '/dashboard/alertas'}
+      className={`group rounded-2xl border bg-white p-5 shadow-card transition hover:-translate-y-0.5 ${tone === 'green' ? 'border-green/10 hover:border-green/30' : 'border-coral/10 hover:border-coral/30'}`}
     >
       <div className="flex items-start justify-between">
         <div>
@@ -221,10 +224,15 @@ function KpiCard({
           <p className="font-display text-3xl font-bold">{big}</p>
           <p className="text-xs text-muted">{sub}</p>
         </div>
-        <img src={face} alt="" className="h-11 w-11" />
+        <span className={`flex h-12 w-12 items-center justify-center rounded-2xl ${tone === 'green' ? 'bg-green/10' : 'bg-coral/10'}`}>
+          <img src={face} alt="" className="h-9 w-9 object-contain" />
+        </span>
       </div>
-      <div className="mt-2">{delta}</div>
-    </div>
+      <div className="mt-2 border-t border-line/70 pt-2">{delta}</div>
+      <p className={`mt-2 flex items-center gap-1 text-xs font-bold ${tone === 'green' ? 'text-green' : 'text-coral'}`}>
+        {tone === 'green' ? 'Ver dimensiones' : 'Atender alertas'} <ArrowRight size={12} />
+      </p>
+    </Link>
   )
 }
 
@@ -238,18 +246,18 @@ function Card({
   title: React.ReactNode
   info?: boolean
   children: React.ReactNode
-  footer?: string
+  footer?: { label: string; to: string }
 }) {
   return (
-    <div className="flex flex-col rounded-2xl bg-surface p-5 shadow-card">
+    <div className="flex flex-col rounded-2xl border border-white bg-white p-5 shadow-card">
       <h2 className="flex items-center gap-1.5 font-display text-[15px] font-bold">
         {title} {info && <Info size={14} className="text-muted" />}
       </h2>
       <div className="mt-2 flex-1">{children}</div>
       {footer && (
-        <button className="mt-3 flex items-center justify-center gap-1.5 text-sm font-bold text-primary">
-          {footer} <ArrowRight size={14} />
-        </button>
+        <Link to={footer.to} className="mt-3 flex items-center justify-center gap-1.5 border-t border-line/70 pt-3 text-sm font-bold text-primary transition hover:gap-2.5">
+          {footer.label} <ArrowRight size={14} />
+        </Link>
       )}
     </div>
   )
@@ -266,7 +274,7 @@ function DimensionsCard({
   delta: number
 }) {
   return (
-    <Card title="Bienestar general por dimensión" info footer="Ver detalle por dimensión">
+    <Card title="Bienestar general por dimensión" info footer={{ label: 'Ver detalle por dimensión', to: '/dashboard/bienestar' }}>
       <div className="flex items-center gap-2">
         <div className="h-64 min-w-0 flex-1">
           <ResponsiveContainer width="100%" height="100%">
@@ -313,7 +321,7 @@ function RiskDonutCard({
     <Card
       title={<>Nivel de riesgo <span className="font-normal text-muted">(distribución)</span></>}
       info
-      footer="Ver estudiantes en riesgo"
+      footer={{ label: 'Ver estudiantes en riesgo', to: '/dashboard/estudiantes?risk=alto' }}
     >
       <div className="flex items-center gap-4">
         <div className="relative h-60 min-w-0 flex-1">
@@ -363,7 +371,7 @@ function RiskDonutCard({
 /* ---------- Tendencia ---------- */
 function TrendCard({ tendencia }: { tendencia: { mes: string; valor: number }[] }) {
   return (
-    <Card title="Tendencia de bienestar general" info footer="Ver historial completo">
+    <Card title="Tendencia de bienestar general" info footer={{ label: 'Ver historial completo', to: '/dashboard/bienestar' }}>
       <div className="h-60">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={tendencia} margin={{ top: 18, right: 18, left: -18, bottom: 0 }}>
@@ -413,7 +421,7 @@ function MiniBar({ pct, color }: { pct: number; color: string }) {
 
 function CoursesCard({ cursos }: { cursos: NonNullable<Stats['cursos']> }) {
   return (
-    <Card title="Resultados por curso" footer="Ver todos los cursos">
+    <Card title="Resultados por curso" footer={{ label: 'Ver todos los cursos', to: '/dashboard/cursos' }}>
       <table className="w-full text-left text-xs">
         <thead>
           <tr className="border-b border-line text-muted">
@@ -441,9 +449,9 @@ function CoursesCard({ cursos }: { cursos: NonNullable<Stats['cursos']> }) {
                 <MiniBar pct={c.alto} color="#FF6B7A" />
               </td>
               <td className="py-2.5">
-                <button className="text-primary">
+                <Link to={`/dashboard/estudiantes?grade=${encodeURIComponent(c.grade)}&course=${encodeURIComponent(c.course)}`} className="text-primary" title={`Ver curso ${c.curso}`}>
                   <Eye size={15} />
-                </button>
+                </Link>
               </td>
             </tr>
           ))}
@@ -456,7 +464,7 @@ function CoursesCard({ cursos }: { cursos: NonNullable<Stats['cursos']> }) {
 /* ---------- Factores ---------- */
 function FactorsCard({ factores }: { factores: NonNullable<Stats['factores']> }) {
   return (
-    <Card title="Principales factores de riesgo" info footer="Ver análisis completo">
+    <Card title="Principales factores de riesgo" info footer={{ label: 'Ver análisis completo', to: '/dashboard/factores' }}>
       <div className="space-y-3.5 pt-1">
         {factores.map((f) => (
           <div key={f.factor} className="flex items-center gap-2.5 text-xs">
@@ -482,7 +490,7 @@ function WordCloudCard({ nube }: { nube: NonNullable<Stats['nube']> }) {
   return (
     <Card
       title={<>Respuestas abiertas <span className="font-normal text-muted">(temas frecuentes)</span></>}
-      footer="Ver todas las respuestas"
+      footer={{ label: 'Ver todas las respuestas', to: '/dashboard/respuestas' }}
     >
       {nube.length === 0 ? (
         <p className="flex h-full min-h-44 items-center justify-center text-xs text-muted">
@@ -509,7 +517,7 @@ function WordCloudCard({ nube }: { nube: NonNullable<Stats['nube']> }) {
 function AlertBanner({ n }: { n: number }) {
   if (n === 0)
     return (
-      <div className="flex items-center gap-4 rounded-2xl bg-[#eefaf1] p-5">
+      <div className="flex items-center gap-4 rounded-2xl border border-green/15 bg-white p-5 shadow-card">
         <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-green text-white">
           <AlertTriangle size={22} />
         </span>
@@ -522,7 +530,7 @@ function AlertBanner({ n }: { n: number }) {
       </div>
     )
   return (
-    <div className="flex items-center gap-4 rounded-2xl bg-[#ffecec] p-5">
+    <div className="flex items-center gap-4 rounded-2xl border border-coral/15 bg-white p-5 shadow-card">
       <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-coral text-white">
         <AlertTriangle size={22} />
       </span>
@@ -553,7 +561,7 @@ function ApoyoCard({ apoyo }: { apoyo: NonNullable<Stats['apoyo']> }) {
   ]
   const total = items.reduce((s, i) => s + i.n, 0) || 1
   return (
-    <div className="rounded-2xl bg-surface p-5 shadow-card">
+    <Link to="/dashboard/estudiantes" className="block rounded-2xl border border-white bg-white p-5 shadow-card transition hover:border-primary/20">
       <p className="font-display text-[15px] font-bold text-ink">
         Apoyo solicitado
         <span className="ml-1.5 font-sans text-xs font-normal text-muted">
@@ -574,14 +582,17 @@ function ApoyoCard({ apoyo }: { apoyo: NonNullable<Stats['apoyo']> }) {
           </div>
         ))}
       </div>
-    </div>
+      <p className="mt-3 flex items-center gap-1 border-t border-line/70 pt-3 text-xs font-bold text-primary">Revisar solicitudes de apoyo <ArrowRight size={12} /></p>
+    </Link>
   )
 }
 
 function NextStepsCard() {
   return (
-    <div className="flex items-center gap-4 rounded-2xl bg-[#eefaf1] p-5">
-      <img src={DASSET('next_plant.png')} alt="" className="h-16 w-16 object-contain" />
+    <div className="flex flex-col gap-4 rounded-2xl border border-green/15 bg-white p-5 shadow-card sm:flex-row sm:items-center">
+      <span className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-green/5 p-2">
+        <img src={DASSET('next_plant.png')} alt="Próximos pasos" className="h-full w-full object-contain" />
+      </span>
       <div className="min-w-0 flex-1">
         <p className="font-display text-[15px] font-bold text-ink">¿Qué sigue?</p>
         <p className="text-xs text-muted">
@@ -589,9 +600,9 @@ function NextStepsCard() {
           fortalecer el bienestar emocional.
         </p>
       </div>
-      <button className="flex shrink-0 items-center gap-1.5 rounded-xl bg-green px-3.5 py-2 text-xs font-bold text-white">
+      <Link to="/dashboard/planes" className="flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-green px-3.5 py-2 text-xs font-bold text-white">
         Plan de acción <ArrowRight size={13} />
-      </button>
+      </Link>
     </div>
   )
 }

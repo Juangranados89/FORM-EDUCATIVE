@@ -6,11 +6,14 @@ import {
   ClipboardEdit,
   Download,
   FileText,
+  Eye,
   ListChecks,
+  Pencil,
   Save,
   Sparkles,
   Presentation,
   Target,
+  Trash2,
   UserRound,
   Wand2,
 } from 'lucide-react'
@@ -36,6 +39,9 @@ export default function Planes() {
   const [saved, setSaved] = useState<SavedPlan[]>([])
   const [savedOk, setSavedOk] = useState(false)
   const [exporting, setExporting] = useState<'docx' | 'pptx' | ''>('')
+  const [expandedId, setExpandedId] = useState('')
+  const [editing, setEditing] = useState<SavedPlan | null>(null)
+  const [savingEdit, setSavingEdit] = useState(false)
 
   useEffect(() => {
     api
@@ -95,6 +101,39 @@ export default function Planes() {
       setError(e instanceof ApiError ? e.message : 'No se pudo descargar el plan.')
     } finally {
       setExporting('')
+    }
+  }
+
+  async function updateSavedPlan() {
+    if (!editing) return
+    setSavingEdit(true)
+    setError('')
+    try {
+      await api.updatePlan(editing.id, {
+        scope: editing.scope,
+        target: editing.target,
+        title: editing.content.titulo,
+        content: editing.content,
+        status: editing.status,
+      })
+      setEditing(null)
+      await refreshSaved()
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'No se pudo actualizar el plan.')
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+
+  async function deleteSavedPlan(savedPlan: SavedPlan) {
+    if (!window.confirm(`¿Eliminar definitivamente el plan “${savedPlan.content.titulo}”?`)) return
+    setError('')
+    try {
+      await api.deletePlan(savedPlan.id)
+      if (expandedId === savedPlan.id) setExpandedId('')
+      await refreshSaved()
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'No se pudo eliminar el plan.')
     }
   }
 
@@ -264,23 +303,27 @@ export default function Planes() {
           <h2 className="mb-2 font-display text-lg font-bold text-ink">Planes guardados</h2>
           <div className="space-y-2">
             {saved.map((p) => (
-              <div key={p.id} className="flex items-center gap-3 rounded-2xl bg-surface p-4 shadow-card">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                  <ClipboardEdit size={17} />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-bold text-ink">{p.content.titulo}</p>
-                  <p className="text-xs text-muted">
-                    {p.scope === 'curso' ? `Curso ${p.target}` : 'Institución'} ·{' '}
-                    {new Date(p.createdAt).toLocaleDateString('es-CO', {
-                      day: '2-digit',
-                      month: 'short',
-                      year: 'numeric',
-                    })}{' '}
-                    · {p.content.actividades.length} actividades
-                  </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-1.5">
+              <div key={p.id} className="rounded-2xl border border-white bg-white p-4 shadow-card">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    <ClipboardEdit size={18} />
+                  </span>
+                  <div className="min-w-52 flex-1">
+                    <p className="truncate font-bold text-ink">{p.content.titulo}</p>
+                    <p className="text-xs text-muted">
+                      {p.scope === 'curso' ? `Curso ${p.target}` : 'Institución'} ·{' '}
+                      {new Date(p.createdAt).toLocaleDateString('es-CO', {
+                        day: '2-digit', month: 'short', year: 'numeric',
+                      })}{' '}· {p.content.actividades.length} actividades
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <button onClick={() => setExpandedId(expandedId === p.id ? '' : p.id)} title="Ver detalle" className="rounded-lg p-2 text-muted transition hover:bg-bg hover:text-primary">
+                      <Eye size={16} />
+                    </button>
+                    <button onClick={() => setEditing(structuredClone(p))} title="Editar plan" className="rounded-lg p-2 text-muted transition hover:bg-bg hover:text-primary">
+                      <Pencil size={16} />
+                    </button>
                   <button
                     onClick={() => downloadPlan('docx', p.content, null)}
                     disabled={!!exporting}
@@ -297,12 +340,66 @@ export default function Planes() {
                   >
                     <Presentation size={16} />
                   </button>
+                  <button onClick={() => deleteSavedPlan(p)} title="Eliminar plan" className="rounded-lg p-2 text-muted transition hover:bg-coral/10 hover:text-coral">
+                    <Trash2 size={16} />
+                  </button>
                   <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-bold capitalize text-primary">
-                    {p.status}
+                    {p.status.replace('_', ' ')}
                   </span>
+                  </div>
                 </div>
+                {expandedId === p.id && (
+                  <div className="mt-4 grid gap-4 border-t border-line pt-4 md:grid-cols-2">
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-wide text-primary">Resumen</p>
+                      <p className="mt-1 text-sm text-muted">{p.content.resumen}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-wide text-primary">Objetivos</p>
+                      <ul className="mt-1 space-y-1 text-sm text-muted">
+                        {p.content.objetivos.map((x, i) => <li key={i}>• {x}</li>)}
+                      </ul>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {editing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/35 p-4" role="dialog" aria-modal="true" aria-label="Editar plan de acción">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white p-6 shadow-soft">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.14em] text-primary">Editar plan</p>
+                <h2 className="mt-1 font-display text-2xl font-bold">Contenido y estado</h2>
+              </div>
+              <button onClick={() => setEditing(null)} className="rounded-xl bg-bg p-2 text-muted" aria-label="Cerrar edición">×</button>
+            </div>
+            <label className="mt-5 block text-sm font-bold">
+              Título
+              <input value={editing.content.titulo} onChange={(e) => setEditing({ ...editing, title: e.target.value, content: { ...editing.content, titulo: e.target.value } })} className="input mt-1.5" />
+            </label>
+            <label className="mt-4 block text-sm font-bold">
+              Resumen
+              <textarea value={editing.content.resumen} onChange={(e) => setEditing({ ...editing, content: { ...editing.content, resumen: e.target.value } })} className="input mt-1.5 min-h-32 resize-y" />
+            </label>
+            <label className="mt-4 block text-sm font-bold">
+              Estado
+              <select value={editing.status} onChange={(e) => setEditing({ ...editing, status: e.target.value })} className="input mt-1.5">
+                <option value="propuesto">Propuesto</option>
+                <option value="en_curso">En curso</option>
+                <option value="completado">Completado</option>
+              </select>
+            </label>
+            <div className="mt-6 flex justify-end gap-2 border-t border-line pt-4">
+              <button onClick={() => setEditing(null)} className="rounded-xl border border-line px-4 py-2 text-sm font-bold text-muted">Cancelar</button>
+              <button onClick={updateSavedPlan} disabled={savingEdit || !editing.content.titulo.trim()} className="rounded-xl bg-primary px-4 py-2 text-sm font-bold text-white disabled:opacity-50">
+                {savingEdit ? 'Guardando…' : 'Guardar cambios'}
+              </button>
+            </div>
           </div>
         </div>
       )}

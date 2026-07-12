@@ -609,6 +609,43 @@ app.post('/api/action-plans', requireAuth, async (req, res) => {
   }
 })
 
+app.put('/api/action-plans/:id', requireAuth, async (req, res) => {
+  try {
+    const { title, content, status, scope, target } = req.body || {}
+    if (!isActionPlan(content) || !String(title || '').trim())
+      return res.status(400).json({ error: 'El plan no tiene una estructura válida.' })
+    const validStatus = ['propuesto', 'en_curso', 'completado'].includes(status)
+      ? status
+      : 'propuesto'
+    const plan = await prisma.actionPlan.update({
+      where: { id: req.params.id },
+      data: {
+        title: String(title).trim().slice(0, 200),
+        content,
+        status: validStatus,
+        scope: scope === 'curso' ? 'curso' : 'general',
+        target: scope === 'curso' ? String(target || '').slice(0, 20) : '',
+      },
+    })
+    res.json({ ok: true, plan })
+  } catch (e) {
+    if (e?.code === 'P2025') return res.status(404).json({ error: 'El plan ya no existe.' })
+    console.error(e)
+    res.status(500).json({ error: 'No se pudo actualizar el plan.' })
+  }
+})
+
+app.delete('/api/action-plans/:id', requireAuth, async (req, res) => {
+  try {
+    await prisma.actionPlan.delete({ where: { id: req.params.id } })
+    res.json({ ok: true })
+  } catch (e) {
+    if (e?.code === 'P2025') return res.status(404).json({ error: 'El plan ya no existe.' })
+    console.error(e)
+    res.status(500).json({ error: 'No se pudo eliminar el plan.' })
+  }
+})
+
 app.post('/api/action-plan/export/:format', requireAuth, async (req, res) => {
   try {
     const { plan, context } = req.body || {}

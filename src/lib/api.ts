@@ -68,6 +68,13 @@ export const api = {
       body: JSON.stringify(data),
     }),
   actionPlans: () => req<{ plans: SavedPlan[] }>('/api/action-plans'),
+  updatePlan: (id: string, data: Omit<SavedPlan, 'id' | 'createdAt'>) =>
+    req<{ ok: true; plan: SavedPlan }>(`/api/action-plans/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  deletePlan: (id: string) =>
+    req<{ ok: true }>(`/api/action-plans/${id}`, { method: 'DELETE' }),
   exportPlan: (
     format: 'docx' | 'pptx',
     data: { plan: ActionPlanContent; context?: PlanContext | null },

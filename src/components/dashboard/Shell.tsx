@@ -77,38 +77,46 @@ export default function Shell({
           ))}
         </nav>
 
-        <div className="mt-auto rounded-2xl bg-[#fff7ec] p-4">
+        <div className="mt-auto rounded-2xl border border-orange/15 bg-white p-4 shadow-card">
           <p className="font-display text-[15px] font-bold">¿Necesitas ayuda?</p>
           <p className="mt-1 text-xs text-muted">Recursos y guías para acompañar a los estudiantes.</p>
-          <img src={DASSET('help_orientadora.png')} alt="" className="mx-auto mt-2 h-20 object-contain" />
+          <div className="mx-auto mt-3 flex h-24 w-full items-center justify-center overflow-hidden rounded-xl bg-orange/5 p-2">
+            <img src={DASSET('help_orientadora.png')} alt="Orientación y acompañamiento" className="h-full w-full object-contain" />
+          </div>
         </div>
       </aside>
 
       {/* Contenido */}
-      <main className="min-w-0 flex-1 px-6 pb-8 pt-4">
-        <div className="flex items-center justify-end gap-3 py-2">
-          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-orange/20 text-orange">
-            <UserRound size={18} />
-          </span>
-          <div className="text-xs leading-tight">
-            <p className="font-bold">Orientador(a)</p>
-            <p className="text-muted">Bienestar Escolar</p>
+      <main className="min-w-0 flex-1 px-4 pb-8 pt-4 sm:px-6">
+        <header className="overflow-hidden rounded-3xl border border-white/80 bg-gradient-to-r from-white via-white to-primary/10 px-5 py-5 shadow-card sm:px-7">
+          <div className="flex items-center justify-between gap-4 border-b border-line/70 pb-4">
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-primary">
+              <span className="h-2 w-2 rounded-full bg-green" /> Centro de análisis y gestión
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-orange/15 text-orange">
+                <UserRound size={19} />
+              </span>
+              <div className="hidden text-xs leading-tight sm:block">
+                <p className="font-bold">Orientador(a)</p>
+                <p className="text-muted">Bienestar Escolar</p>
+              </div>
+              <button
+                onClick={() => api.logout().then(() => nav('/login'))}
+                className="flex items-center gap-1.5 rounded-xl border border-line bg-white px-3 py-2 text-xs font-bold text-muted transition hover:border-coral/30 hover:text-coral"
+              >
+                <LogOut size={14} /> Salir
+              </button>
+            </div>
           </div>
-          <button
-            onClick={() => api.logout().then(() => nav('/login'))}
-            className="flex items-center gap-1.5 rounded-xl border border-line bg-surface px-3 py-1.5 text-xs font-bold text-muted hover:text-coral"
-          >
-            <LogOut size={14} /> Salir
-          </button>
-        </div>
-
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <h1 className="font-display text-3xl font-bold">{title}</h1>
-            {subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}
+          <div className="mt-5 flex flex-wrap items-end justify-between gap-4">
+            <div className="max-w-3xl">
+              <h1 className="font-display text-3xl font-bold tracking-tight sm:text-4xl">{title}</h1>
+              {subtitle && <p className="mt-2 text-sm leading-relaxed text-muted sm:text-base">{subtitle}</p>}
+            </div>
+            {actions && <div className="flex flex-wrap gap-2.5">{actions}</div>}
           </div>
-          {actions && <div className="flex flex-wrap gap-2.5">{actions}</div>}
-        </div>
+        </header>
 
         {children}
       </main>
