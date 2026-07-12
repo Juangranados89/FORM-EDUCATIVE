@@ -1,26 +1,13 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   AlertTriangle,
   ArrowDown,
   ArrowRight,
   ArrowUp,
-  Bell,
-  Calendar,
-  ChevronDown,
-  ClipboardEdit,
   Download,
   Eye,
-  Filter,
-  GraduationCap,
-  Heart,
-  Home,
   Info,
-  LogOut,
-  MessageSquareText,
-  ScanSearch,
-  SlidersHorizontal,
-  UserRound,
   Users,
 } from 'lucide-react'
 import {
@@ -40,10 +27,11 @@ import {
   YAxis,
 } from 'recharts'
 import { api, ApiError, type Stats } from '../lib/api'
+import Shell from '../components/dashboard/Shell'
 
 const DASSET = (n: string) => `${import.meta.env.BASE_URL}assets/dashboard/${n}`
 
-/* ---------- Página ---------- */
+/* ---------- Página Resumen ---------- */
 export default function Dashboard() {
   const nav = useNavigate()
   const [stats, setStats] = useState<Stats | null>(null)
@@ -60,33 +48,40 @@ export default function Dashboard() {
   }, [nav])
 
   return (
-    <div className="flex min-h-screen bg-bg text-ink">
-      <Sidebar />
-      <main className="min-w-0 flex-1 px-6 pb-8 pt-4">
-        <Header onLogout={() => api.logout().then(() => nav('/login'))} />
-        {error && (
-          <p className="mt-6 rounded-2xl bg-coral/10 p-4 text-center text-sm font-semibold text-coral">
-            {error}
+    <Shell
+      title="Panel de Bienestar Escolar"
+      subtitle="Resultados consolidados de la encuesta de bienestar emocional."
+      actions={
+        <a
+          href="/api/export.xlsx"
+          className="flex items-center gap-2 rounded-xl bg-primary px-3.5 py-2 text-sm font-semibold text-white shadow-card transition hover:brightness-105"
+        >
+          <Download size={15} /> Exportar Excel
+        </a>
+      }
+    >
+      {error && (
+        <p className="mt-6 rounded-2xl bg-coral/10 p-4 text-center text-sm font-semibold text-coral">
+          {error}
+        </p>
+      )}
+      {!stats && !error && (
+        <p className="mt-16 text-center text-sm font-semibold text-muted">
+          Cargando resultados…
+        </p>
+      )}
+      {stats?.empty && (
+        <div className="mt-16 flex flex-col items-center gap-3 text-center">
+          <img src={DASSET('next_plant.png')} alt="" className="h-24" />
+          <p className="font-display text-lg font-bold">Aún no hay respuestas</p>
+          <p className="max-w-sm text-sm text-muted">
+            Cuando los estudiantes envíen la encuesta, verás aquí los resultados
+            consolidados en tiempo real.
           </p>
-        )}
-        {!stats && !error && (
-          <p className="mt-16 text-center text-sm font-semibold text-muted">
-            Cargando resultados…
-          </p>
-        )}
-        {stats?.empty && (
-          <div className="mt-16 flex flex-col items-center gap-3 text-center">
-            <img src={DASSET('next_plant.png')} alt="" className="h-24" />
-            <p className="font-display text-lg font-bold">Aún no hay respuestas</p>
-            <p className="max-w-sm text-sm text-muted">
-              Cuando los estudiantes envíen la encuesta, verás aquí los resultados
-              consolidados en tiempo real.
-            </p>
-          </div>
-        )}
-        {stats && !stats.empty && <Content stats={stats} />}
-      </main>
-    </div>
+        </div>
+      )}
+      {stats && !stats.empty && <Content stats={stats} />}
+    </Shell>
   )
 }
 
@@ -111,165 +106,6 @@ function Content({ stats }: { stats: Stats }) {
         <NextStepsCard />
       </div>
     </>
-  )
-}
-
-/* ---------- Sidebar ---------- */
-const NAV_RESULTS = [
-  { icon: <Users size={17} />, label: 'Bienestar general' },
-  { icon: <Heart size={17} />, label: 'Emociones y hábitos' },
-  { icon: <ScanSearch size={17} />, label: 'Factores de riesgo' },
-  { icon: <SlidersHorizontal size={17} />, label: 'Comparaciones' },
-  { icon: <MessageSquareText size={17} />, label: 'Respuestas abiertas' },
-]
-const NAV_GESTION = [
-  { icon: <GraduationCap size={17} />, label: 'Cursos / Grados' },
-  { icon: <UserRound size={17} />, label: 'Estudiantes' },
-  { icon: <AlertTriangle size={17} />, label: 'Alertas de riesgo' },
-  { icon: <ClipboardEdit size={17} />, label: 'Planes de acción' },
-]
-
-function Sidebar() {
-  return (
-    <aside className="hidden w-60 shrink-0 flex-col border-r border-line bg-surface px-4 pb-5 pt-5 lg:flex">
-      <div className="flex items-center gap-2.5 px-1">
-        <Logo />
-        <div className="font-display text-lg font-bold leading-tight text-primary">
-          Bienestar
-          <br />
-          Escolar
-        </div>
-      </div>
-
-      <button className="mt-6 flex items-center gap-2.5 rounded-xl bg-primary/10 px-3 py-2.5 text-sm font-bold text-primary">
-        <Home size={17} /> Resumen
-      </button>
-
-      <p className="mt-5 px-1 text-[11px] font-bold uppercase tracking-wide text-muted">
-        Resultados
-      </p>
-      <nav className="mt-1 space-y-0.5">
-        {NAV_RESULTS.map((n) => (
-          <NavItem key={n.label} {...n} />
-        ))}
-      </nav>
-
-      <p className="mt-5 px-1 text-[11px] font-bold uppercase tracking-wide text-muted">
-        Gestión
-      </p>
-      <nav className="mt-1 space-y-0.5">
-        {NAV_GESTION.map((n) => (
-          <NavItem key={n.label} {...n} />
-        ))}
-      </nav>
-
-      <div className="mt-auto rounded-2xl bg-[#fff7ec] p-4">
-        <p className="font-display text-[15px] font-bold">¿Necesitas ayuda?</p>
-        <p className="mt-1 text-xs text-muted">
-          Recursos y guías para acompañar a los estudiantes.
-        </p>
-        <button className="mt-3 flex items-center gap-1.5 rounded-xl border border-orange/50 bg-surface px-3 py-1.5 text-xs font-bold text-orange">
-          Ver recursos <ArrowRight size={13} />
-        </button>
-        <img
-          src={DASSET('help_orientadora.png')}
-          alt=""
-          className="mx-auto mt-2 h-24 object-contain"
-        />
-      </div>
-    </aside>
-  )
-}
-
-function NavItem({ icon, label }: { icon: React.ReactNode; label: string }) {
-  return (
-    <button className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm font-semibold text-muted transition hover:bg-bg hover:text-ink">
-      {icon} {label}
-    </button>
-  )
-}
-
-function Logo() {
-  return (
-    <svg width="40" height="40" viewBox="0 0 40 40" aria-hidden>
-      <path
-        d="M20 3C10.6 3 3 9.9 3 18.4c0 4.9 2.5 9.2 6.4 12l-1.6 6.1 6.6-3.3c1.8.5 3.7.7 5.6.7 9.4 0 17-6.9 17-15.4S29.4 3 20 3z"
-        fill="#6754E8"
-      />
-      <path
-        d="M20 27s-7-4.2-7-9.1c0-2.4 1.9-4.3 4.2-4.3 1.4 0 2.4.6 2.8 1.6.4-1 1.4-1.6 2.8-1.6 2.3 0 4.2 1.9 4.2 4.3 0 4.9-7 9.1-7 9.1z"
-        fill="#fff"
-      />
-    </svg>
-  )
-}
-
-/* ---------- Header ---------- */
-function Header({ onLogout }: { onLogout: () => void }) {
-  const hoy = new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })
-  return (
-    <div>
-      <div className="flex items-center justify-end gap-4 py-2">
-        <div className="relative">
-          <Bell size={20} className="text-muted" />
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-orange/20 text-orange">
-            <UserRound size={18} />
-          </span>
-          <div className="text-xs leading-tight">
-            <p className="font-bold">Orientador(a)</p>
-            <p className="text-muted">Bienestar Escolar</p>
-          </div>
-        </div>
-        <button
-          onClick={onLogout}
-          title="Cerrar sesión"
-          className="flex items-center gap-1.5 rounded-xl border border-line bg-surface px-3 py-1.5 text-xs font-bold text-muted hover:text-coral"
-        >
-          <LogOut size={14} /> Salir
-        </button>
-      </div>
-
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-sm text-muted">¡Hola, Orientador(a)!</p>
-          <h1 className="flex items-center gap-2 font-display text-3xl font-bold">
-            Panel de Bienestar Escolar <Info size={16} className="text-muted" />
-          </h1>
-          <p className="mt-1 text-sm text-muted">
-            Aquí puedes ver los resultados consolidados de la encuesta de bienestar
-            emocional.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2.5">
-          <HeaderBtn icon={<Calendar size={15} />} label={`Hasta ${hoy}`} chevron />
-          <HeaderBtn icon={<Filter size={15} />} label="Filtros" />
-          <a
-            href="/api/export.xlsx"
-            className="flex items-center gap-2 rounded-xl bg-primary px-3.5 py-2 text-sm font-semibold text-white shadow-card transition hover:brightness-105"
-          >
-            <Download size={15} /> Exportar Excel
-          </a>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function HeaderBtn({
-  icon,
-  label,
-  chevron,
-}: {
-  icon: React.ReactNode
-  label: string
-  chevron?: boolean
-}) {
-  return (
-    <button className="flex items-center gap-2 rounded-xl border border-line bg-surface px-3.5 py-2 text-sm font-semibold text-ink shadow-card">
-      {icon} {label} {chevron && <ChevronDown size={14} className="text-muted" />}
-    </button>
   )
 }
 
@@ -675,7 +511,7 @@ function AlertBanner({ n }: { n: number }) {
     return (
       <div className="flex items-center gap-4 rounded-2xl bg-[#eefaf1] p-5">
         <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-green text-white">
-          <Heart size={22} fill="currentColor" />
+          <AlertTriangle size={22} />
         </span>
         <div>
           <p className="font-display text-[15px] font-bold text-green">
@@ -699,9 +535,12 @@ function AlertBanner({ n }: { n: number }) {
           acompañamiento.
         </p>
       </div>
-      <button className="flex shrink-0 items-center gap-1.5 rounded-xl border border-coral/40 bg-surface px-3.5 py-2 text-xs font-bold text-coral">
-        Ver estudiantes <ArrowRight size={13} />
-      </button>
+      <Link
+        to="/dashboard/alertas"
+        className="flex shrink-0 items-center gap-1.5 rounded-xl border border-coral/40 bg-surface px-3.5 py-2 text-xs font-bold text-coral"
+      >
+        Ver alertas <ArrowRight size={13} />
+      </Link>
     </div>
   )
 }

@@ -34,7 +34,32 @@ export const api = {
   logout: () => req<{ ok: true }>('/api/auth/logout', { method: 'POST' }),
   me: () => req<{ user: string }>('/api/auth/me'),
   stats: () => req<Stats>('/api/stats'),
+  alerts: () => req<{ alerts: AlertRow[]; criticos: number }>('/api/alerts'),
+  responses: (filters: Record<string, string> = {}) => {
+    const qs = new URLSearchParams(
+      Object.entries(filters).filter(([, v]) => v),
+    ).toString()
+    return req<{ rows: ResponseRow[] }>(`/api/responses${qs ? `?${qs}` : ''}`)
+  },
 }
+
+export type ResponseRow = {
+  id: string
+  createdAt: string
+  grade: string
+  course: string
+  shift: string
+  ageRange: string
+  answers: Record<string, string>
+  categories: string[]
+  openText: string
+  support: string
+  score: number
+  riskLevel: 'bajo' | 'moderado' | 'alto'
+  criticalFlag: boolean
+}
+
+export type AlertRow = ResponseRow & { reasons: string[]; sev: number }
 
 export type Stats = {
   empty: boolean

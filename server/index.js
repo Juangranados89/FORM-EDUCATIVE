@@ -297,6 +297,66 @@ app.get('/api/stats', requireAuth, async (_req, res) => {
   }
 })
 
+/* ================= Filtros compartidos ================= */
+function buildWhere(q) {
+  const where = {}
+  if (q.grade) where.grade = q.grade
+  if (q.course) where.course = q.course
+  if (q.shift) where.shift = q.shift
+  if (q.risk) where.riskLevel = q.risk
+  if (q.from || q.to) {
+    where.createdAt = {}
+    if (q.from) where.createdAt.gte = new Date(q.from)
+    if (q.to) where.createdAt.lte = new Date(`${q.to}T23:59:59`)
+  }
+  return where
+}
+
+/* ================= Estudiantes / Respuestas (filtrable) ================= */
+app.get('/api/responses', requireAuth, async (req, res) => {
+  try {
+    const rows = await prisma.response.findMany({
+      where: buildWhere(req.query),
+      orderBy: { createdAt: 'desc' },
+      take: 500,
+    })
+    res.json({ rows })
+  } catch (e) {
+    console.error(e)
+    res.status(500).json({ error: 'Error al listar respuestas' })
+  }
+})
+
+/* ================= Alertas de riesgo (prioridad para el orientador) ================= */
+app.get('/api/alerts', requireAuth, async (_req, res) => {
+  try {
+    const rows = await prisma.response.findMany({ orderBy: { createdAt: 'desc' } })
+    const alerts = rows
+      .map((r) => {
+        const reasons = []
+        if (r.categories.includes('planificacion')) reasons.push('Planificación')
+        for (const q of CRITICAL) if (SCORES[q][r.answers?.[q]] >= 3) reasons.push(CRIT_LABEL[q])
+        if (r.riskLevel === 'alto') reasons.push('Riesgo alto')
+        if (r.support === 'si_pronto') reasons.push('Pide hablar pronto')
+        // severidad: crítico > alto > moderado
+        const sev = r.criticalFlag || r.categories.includes('planificacion') ? 3 : r.riskLevel === 'alto' ? 2 : r.riskLevel === 'moderado' ? 1 : 0
+        return { ...r, reasons: [...new Set(reasons)], sev }
+      })
+      .filter((r) => r.sev >= 1)
+      .sort((a, b) => b.sev - a.sev || +b.createdAt - +a.createdAt)
+    res.json({ alerts, criticos: alerts.filter((a) => a.sev === 3).length })
+  } catch (e) {
+    console.error(e)
+    res.status(500).json({ error: 'Error al listar alertas' })
+  }
+})
+
+const CRIT_LABEL = {
+  descanso: 'Deseo de no despertar',
+  ausencia: 'Sentirse una carga',
+  dolor: 'Idea de autolesión',
+}
+
 /* ================= Etiquetas legibles para exportar ================= */
 const Q_TITLE = {
   colegio: '¿Cómo te sientes en el colegio?',
@@ -322,9 +382,12 @@ const RISK_FILL = { alto: 'FFFFE2E5', moderado: 'FFFFF3CD', bajo: 'FFE6F6EC' }
 const RISK_FONT = { alto: 'FFB4232E', moderado: 'FF8A6D00', bajo: 'FF1F7A44' }
 
 /* ================= Exportar XLSX (protegido, tabla formateada) ================= */
-app.get('/api/export.xlsx', requireAuth, async (_req, res) => {
+app.get('/api/export.xlsx', requireAuth, async (req, res) => {
   try {
-    const rows = await prisma.response.findMany({ orderBy: { createdAt: 'asc' } })
+    const rows = await prisma.response.findMany({
+      where: buildWhere(req.query),
+      orderBy: { createdAt: 'asc' },
+    })
     const QIDS = Object.keys(SCORES)
     const wb = new ExcelJS.Workbook()
     wb.creator = 'Bienestar Escolar'
