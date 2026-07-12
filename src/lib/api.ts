@@ -120,6 +120,8 @@ export type Stats = {
   tendencia?: { mes: string; valor: number }[]
   cursos?: {
     curso: string
+    grade: string
+    course: string
     n: number
     participacion: number
     bienestar: number

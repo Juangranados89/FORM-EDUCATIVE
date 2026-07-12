@@ -65,8 +65,6 @@ export default function Cursos() {
             </thead>
             <tbody>
               {cursos.map((c) => {
-                const grade = c.curso.slice(0, -1)
-                const course = c.curso.slice(-1)
                 return (
                   <tr key={c.curso} className="border-b border-line/60 last:border-0 hover:bg-bg">
                     <td className="px-4 py-3 font-bold">{c.curso}</td>
@@ -85,7 +83,7 @@ export default function Cursos() {
                     </td>
                     <td className="px-4 py-3">
                       <Link
-                        to={`/dashboard/estudiantes?grade=${encodeURIComponent(grade)}&course=${course}`}
+                        to={`/dashboard/estudiantes?grade=${encodeURIComponent(c.grade)}&course=${encodeURIComponent(c.course)}`}
                         className="flex items-center gap-1 text-xs font-bold text-primary"
                       >
                         Ver <ArrowRight size={13} />

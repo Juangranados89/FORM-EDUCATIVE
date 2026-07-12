@@ -21,21 +21,60 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ''
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash'
 
 // Llama a Google Gemini y devuelve el JSON parseado de la respuesta.
-async function callGemini(system, userText) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`
+async function callGemini(system, userText, responseSchema) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent`
   const r = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: system }] },
       contents: [{ role: 'user', parts: [{ text: userText }] }],
-      generationConfig: { responseMimeType: 'application/json', temperature: 0.4, maxOutputTokens: 4096 },
+      generationConfig: {
+        responseMimeType: 'application/json',
+        responseSchema,
+        temperature: 0.4,
+        maxOutputTokens: 4096,
+      },
     }),
   })
   const data = await r.json().catch(() => ({}))
   if (!r.ok) throw new Error(data?.error?.message || `Gemini ${r.status}`)
-  const text = (data.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('') || '{}'
-  return JSON.parse(text)
+  const candidate = data.candidates?.[0]
+  const text = (candidate?.content?.parts || []).map((p) => p.text || '').join('')
+  if (!text) {
+    const reason = candidate?.finishReason || data?.promptFeedback?.blockReason || 'respuesta vacía'
+    throw new Error(`Gemini no devolvió contenido (${reason})`)
+  }
+  try {
+    return JSON.parse(text)
+  } catch {
+    throw new Error('Gemini devolvió una respuesta que no es JSON válido')
+  }
+}
+
+// Repara valores creados por clientes antiguos que enviaron UTF-8 interpretado como Latin-1.
+function repairText(value) {
+  const text = String(value ?? '').trim()
+  if (!/[ÃÂâð]/.test(text)) return text
+  try {
+    return Buffer.from(text, 'latin1').toString('utf8')
+  } catch {
+    return text
+  }
+}
+
+const VALID_GRADES = new Set(['5°', '6°', '7°', '8°', '9°', '10°', '11°'])
+const VALID_COURSES = new Set(['A', 'B', 'C', 'D'])
+const VALID_SHIFTS = new Set(['mañana', 'tarde'])
+const VALID_AGES = new Set(['10-11', '12-13', '14-15', '16-18'])
+
+function cleanProfile(profile = {}) {
+  return {
+    grade: repairText(profile.grade),
+    course: repairText(profile.course).toUpperCase(),
+    shift: repairText(profile.shift).toLowerCase(),
+    ageRange: repairText(profile.ageRange),
+  }
 }
 
 app.use(express.json({ limit: '64kb' }))
@@ -137,8 +176,14 @@ app.get('/api/auth/me', requireAuth, (req, res) => res.json({ user: req.user.sub
 app.post('/api/responses', async (req, res) => {
   try {
     const { profile, answers, categories = [], openText = '', support } = req.body || {}
-    if (!profile?.grade || !profile?.course || !profile?.shift || !profile?.ageRange)
-      return res.status(400).json({ error: 'Datos del estudiante incompletos' })
+    const clean = cleanProfile(profile)
+    if (
+      !VALID_GRADES.has(clean.grade) ||
+      !VALID_COURSES.has(clean.course) ||
+      !VALID_SHIFTS.has(clean.shift) ||
+      !VALID_AGES.has(clean.ageRange)
+    )
+      return res.status(400).json({ error: 'Los datos de grado, curso, jornada o edad no son válidos' })
     if (!SUPPORTS.includes(support)) return res.status(400).json({ error: 'Respuesta de apoyo inválida' })
     const cats = categories.filter((c) => CATEGORIES.includes(c))
     const computed = computeScore(answers || {})
@@ -146,10 +191,10 @@ app.post('/api/responses', async (req, res) => {
     const riskLevel = riskOf(computed.score, computed.critical, cats)
     const saved = await prisma.response.create({
       data: {
-        grade: String(profile.grade).slice(0, 10),
-        course: String(profile.course).slice(0, 10),
-        shift: String(profile.shift).slice(0, 10),
-        ageRange: String(profile.ageRange).slice(0, 10),
+        grade: clean.grade,
+        course: clean.course,
+        shift: clean.shift,
+        ageRange: clean.ageRange,
         answers,
         categories: cats,
         openText: String(openText).slice(0, 2000),
@@ -234,8 +279,10 @@ app.get('/api/stats', requireAuth, async (_req, res) => {
     // Cursos
     const byCourse = new Map()
     for (const r of rows) {
-      const k = `${r.grade}${r.course}`
-      const c = byCourse.get(k) || { n: 0, wb: 0, alto: 0, mod: 0 }
+      const grade = repairText(r.grade)
+      const course = repairText(r.course).toUpperCase()
+      const k = `${grade}|${course}`
+      const c = byCourse.get(k) || { grade, course, n: 0, wb: 0, alto: 0, mod: 0 }
       c.n++
       c.wb += wellbeing(r.score)
       if (r.riskLevel === 'alto') c.alto++
@@ -245,8 +292,10 @@ app.get('/api/stats', requireAuth, async (_req, res) => {
     const maxN = Math.max(...[...byCourse.values()].map((c) => c.n))
     const cursos = [...byCourse.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([curso, c]) => ({
-        curso,
+      .map(([, c]) => ({
+        curso: `${c.grade}${c.course}`,
+        grade: c.grade,
+        course: c.course,
         n: c.n,
         participacion: Math.round((c.n / maxN) * 100),
         bienestar: Math.round(c.wb / c.n),
@@ -381,8 +430,17 @@ const CRIT_LABEL = {
 
 // Arma un resumen compacto de los datos para pasar como contexto a la IA.
 async function buildContext(scope, target) {
-  const where = scope === 'curso' && target ? buildWhere({ grade: target.slice(0, -1), course: target.slice(-1) }) : {}
-  const rows = await prisma.response.findMany({ where })
+  const allRows = await prisma.response.findMany()
+  const targetGrade = repairText(target.slice(0, -1))
+  const targetCourse = repairText(target.slice(-1)).toUpperCase()
+  const rows =
+    scope === 'curso' && target
+      ? allRows.filter(
+          (r) =>
+            repairText(r.grade) === targetGrade &&
+            repairText(r.course).toUpperCase() === targetCourse,
+        )
+      : allRows
   const total = rows.length
   if (total === 0) return null
   const pct = (n) => Math.round((n / total) * 100)
@@ -470,11 +528,28 @@ app.post('/api/action-plan/suggest', requireAuth, async (req, res) => {
     const plan = await callGemini(
       PLAN_SYSTEM,
       `Datos agregados y anónimos (${ctx.alcance}):\n${JSON.stringify(ctx, null, 2)}\n\nDiseña el plan de acción de bienestar emocional.`,
+      PLAN_SCHEMA,
     )
+    const validPlan =
+      plan &&
+      typeof plan.titulo === 'string' &&
+      typeof plan.resumen === 'string' &&
+      Array.isArray(plan.objetivos) &&
+      Array.isArray(plan.actividades) &&
+      Array.isArray(plan.indicadores) &&
+      Array.isArray(plan.recursos) &&
+      typeof plan.nota_seguridad === 'string'
+    if (!validPlan) throw new Error('Gemini devolvió un plan incompleto')
     res.json({ plan, context: ctx, scope, target })
   } catch (e) {
     console.error('IA plan error:', e?.message || e)
-    res.status(502).json({ error: 'No se pudo generar el plan con IA. Intenta de nuevo.' })
+    const detail = String(e?.message || '')
+    const configError = /API key|quota|billing|model|permission|not found|429|403|404/i.test(detail)
+    res.status(502).json({
+      error: configError
+        ? `Gemini rechazó la solicitud: ${detail}`
+        : 'Gemini no pudo generar un plan válido. Intenta de nuevo.',
+    })
   }
 })
 
