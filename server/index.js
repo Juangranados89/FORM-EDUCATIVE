@@ -7,6 +7,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { PrismaClient } from '@prisma/client'
 import ExcelJS from 'exceljs'
+import Anthropic from '@anthropic-ai/sdk'
 
 const prisma = new PrismaClient()
 const app = express()
@@ -17,6 +18,8 @@ const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-cambiar'
 const ADMIN_USER = process.env.ADMIN_USER || 'orientador'
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'cambiar123'
 const EXPECTED_STUDENTS = Number(process.env.EXPECTED_STUDENTS || 0)
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || ''
+const anthropic = ANTHROPIC_API_KEY ? new Anthropic({ apiKey: ANTHROPIC_API_KEY }) : null
 
 app.use(express.json({ limit: '64kb' }))
 app.use(cookieParser())
@@ -356,6 +359,138 @@ const CRIT_LABEL = {
   ausencia: 'Sentirse una carga',
   dolor: 'Idea de autolesión',
 }
+
+/* ================= Planes de acción con IA (Claude) ================= */
+
+// Arma un resumen compacto de los datos para pasar como contexto a la IA.
+async function buildContext(scope, target) {
+  const where = scope === 'curso' && target ? buildWhere({ grade: target.slice(0, -1), course: target.slice(-1) }) : {}
+  const rows = await prisma.response.findMany({ where })
+  const total = rows.length
+  if (total === 0) return null
+  const pct = (n) => Math.round((n / total) * 100)
+  const risk = {
+    alto: rows.filter((r) => r.riskLevel === 'alto').length,
+    moderado: rows.filter((r) => r.riskLevel === 'moderado').length,
+    bajo: rows.filter((r) => r.riskLevel === 'bajo').length,
+  }
+  const factores = [
+    { factor: 'Estrés académico', pct: pct(rows.filter((r) => SCORES.estres[r.answers?.estres] >= 3).length) },
+    { factor: 'Pérdida de interés', pct: pct(rows.filter((r) => SCORES.interes[r.answers?.interes] >= 3).length) },
+    { factor: 'Soledad / aislamiento', pct: pct(rows.filter((r) => SCORES.solo[r.answers?.solo] >= 3 || r.categories.includes('aislamiento')).length) },
+    { factor: 'Problemas de sueño', pct: pct(rows.filter((r) => SCORES.descanso[r.answers?.descanso] >= 3).length) },
+    { factor: 'Entorno familiar', pct: pct(rows.filter((r) => r.categories.includes('entorno_familiar')).length) },
+    { factor: 'Desesperanza', pct: pct(rows.filter((r) => r.categories.includes('desesperanza')).length) },
+  ].sort((a, b) => b.pct - a.pct)
+  const criticos = rows.filter((r) => r.criticalFlag).length
+  const quierenApoyo = rows.filter((r) => r.support === 'si_pronto').length
+  // temas frecuentes de respuestas abiertas
+  const freq = new Map()
+  for (const r of rows) {
+    for (const w of r.openText.toLowerCase().replace(/[^a-záéíóúñü\s]/g, ' ').split(/\s+/))
+      if (w.length > 3 && !STOPWORDS.has(w)) freq.set(w, (freq.get(w) || 0) + 1)
+  }
+  const temas = [...freq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([w]) => w)
+  return { total, alcance: scope === 'curso' ? `curso ${target}` : 'toda la institución', risk, factores, criticos, quierenApoyo, temas }
+}
+
+const PLAN_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    titulo: { type: 'string' },
+    resumen: { type: 'string' },
+    objetivos: { type: 'array', items: { type: 'string' } },
+    actividades: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          nombre: { type: 'string' },
+          descripcion: { type: 'string' },
+          responsable: { type: 'string' },
+          plazo: { type: 'string' },
+          dirigido_a: { type: 'string' },
+        },
+        required: ['nombre', 'descripcion', 'responsable', 'plazo', 'dirigido_a'],
+      },
+    },
+    indicadores: { type: 'array', items: { type: 'string' } },
+    recursos: { type: 'array', items: { type: 'string' } },
+    nota_seguridad: { type: 'string' },
+  },
+  required: ['titulo', 'resumen', 'objetivos', 'actividades', 'indicadores', 'recursos', 'nota_seguridad'],
+}
+
+const PLAN_SYSTEM = `Eres un asesor de orientación escolar y psicología educativa. A partir de datos agregados y anónimos de una encuesta de bienestar emocional, propones un plan de acción institucional concreto, empático y accionable para el equipo de orientación de un colegio.
+Reglas:
+- Enfoque preventivo y de acompañamiento; nunca diagnóstico clínico ni tratamiento.
+- Lenguaje claro, cálido y no estigmatizante. Español.
+- Actividades realistas para un colegio (tutorías, talleres, escuela de padres, rutas de derivación, seguimiento por curso).
+- Si hay casos críticos o ideación, incluye activación de rutas de atención y protocolo de derivación a profesionales de salud mental, sin exponer a estudiantes.
+- La 'nota_seguridad' debe recordar validar el plan con el equipo de orientación/psicología y las líneas de ayuda.
+- Responde SOLO con el objeto JSON del esquema.`
+
+app.post('/api/action-plan/suggest', requireAuth, async (req, res) => {
+  if (!anthropic)
+    return res.status(503).json({ error: 'Falta configurar ANTHROPIC_API_KEY en el servidor.' })
+  try {
+    const scope = req.body?.scope === 'curso' ? 'curso' : 'general'
+    const target = String(req.body?.target || '')
+    const ctx = await buildContext(scope, target)
+    if (!ctx) return res.status(400).json({ error: 'No hay respuestas para generar un plan.' })
+
+    const message = await anthropic.messages.create({
+      model: 'claude-opus-4-8',
+      max_tokens: 8000,
+      thinking: { type: 'adaptive' },
+      output_config: { effort: 'medium', format: { type: 'json_schema', schema: PLAN_SCHEMA } },
+      system: PLAN_SYSTEM,
+      messages: [
+        {
+          role: 'user',
+          content: `Datos agregados y anónimos (${ctx.alcance}):\n${JSON.stringify(ctx, null, 2)}\n\nDiseña el plan de acción de bienestar emocional.`,
+        },
+      ],
+    })
+    const text = message.content.find((b) => b.type === 'text')?.text || '{}'
+    const plan = JSON.parse(text)
+    res.json({ plan, context: ctx, scope, target })
+  } catch (e) {
+    console.error('IA plan error:', e?.message || e)
+    res.status(502).json({ error: 'No se pudo generar el plan con IA. Intenta de nuevo.' })
+  }
+})
+
+app.get('/api/action-plans', requireAuth, async (_req, res) => {
+  try {
+    const plans = await prisma.actionPlan.findMany({ orderBy: { createdAt: 'desc' }, take: 100 })
+    res.json({ plans })
+  } catch (e) {
+    console.error(e)
+    res.status(500).json({ error: 'Error al listar planes' })
+  }
+})
+
+app.post('/api/action-plans', requireAuth, async (req, res) => {
+  try {
+    const { scope, target, title, content } = req.body || {}
+    if (!content || !title) return res.status(400).json({ error: 'Plan inválido' })
+    const plan = await prisma.actionPlan.create({
+      data: {
+        scope: scope === 'curso' ? 'curso' : 'general',
+        target: String(target || ''),
+        title: String(title).slice(0, 200),
+        content,
+      },
+    })
+    res.json({ ok: true, id: plan.id })
+  } catch (e) {
+    console.error(e)
+    res.status(500).json({ error: 'Error al guardar el plan' })
+  }
+})
 
 /* ================= Etiquetas legibles para exportar ================= */
 const Q_TITLE = {

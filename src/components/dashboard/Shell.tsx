@@ -31,7 +31,7 @@ const GESTION: NavDef[] = [
   { to: '/dashboard/cursos', label: 'Cursos / Grados', icon: <GraduationCap size={17} /> },
   { to: '/dashboard/estudiantes', label: 'Estudiantes', icon: <UserRound size={17} /> },
   { to: '/dashboard/alertas', label: 'Alertas de riesgo', icon: <AlertTriangle size={17} /> },
-  { to: '/dashboard/planes', label: 'Planes de acción', icon: <ClipboardEdit size={17} />, soon: true },
+  { to: '/dashboard/planes', label: 'Planes de acción', icon: <ClipboardEdit size={17} /> },
 ]
 
 export default function Shell({

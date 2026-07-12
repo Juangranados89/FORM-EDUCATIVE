@@ -41,6 +41,45 @@ export const api = {
     ).toString()
     return req<{ rows: ResponseRow[] }>(`/api/responses${qs ? `?${qs}` : ''}`)
   },
+  suggestPlan: (scope: string, target: string) =>
+    req<{ plan: ActionPlanContent; context: PlanContext; scope: string; target: string }>(
+      '/api/action-plan/suggest',
+      { method: 'POST', body: JSON.stringify({ scope, target }) },
+    ),
+  savePlan: (data: { scope: string; target: string; title: string; content: ActionPlanContent }) =>
+    req<{ ok: true; id: string }>('/api/action-plans', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  actionPlans: () => req<{ plans: SavedPlan[] }>('/api/action-plans'),
+}
+
+export type ActionPlanContent = {
+  titulo: string
+  resumen: string
+  objetivos: string[]
+  actividades: { nombre: string; descripcion: string; responsable: string; plazo: string; dirigido_a: string }[]
+  indicadores: string[]
+  recursos: string[]
+  nota_seguridad: string
+}
+export type PlanContext = {
+  total: number
+  alcance: string
+  risk: { alto: number; moderado: number; bajo: number }
+  factores: { factor: string; pct: number }[]
+  criticos: number
+  quierenApoyo: number
+  temas: string[]
+}
+export type SavedPlan = {
+  id: string
+  scope: string
+  target: string
+  title: string
+  content: ActionPlanContent
+  status: string
+  createdAt: string
 }
 
 export type ResponseRow = {

@@ -29,3 +29,17 @@ model Response {
   @@index([createdAt])
   @@index([grade, course])
 }
+
+// Plan de acción sugerido por IA y guardado por el orientador.
+model ActionPlan {
+  id        String   @id @default(cuid())
+  scope     String // general | curso
+  target    String   @default("") // curso al que aplica (si scope=curso)
+  title     String
+  // Estructura del plan generada por la IA (objetivos, actividades, etc.)
+  content   Json
+  status    String   @default("propuesto") // propuesto | en_curso | completado
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
