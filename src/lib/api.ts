@@ -12,6 +12,22 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T
 }
 
+async function reqFile(path: string, data: unknown): Promise<{ blob: Blob; filename: string }> {
+  const r = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    body: JSON.stringify(data),
+  })
+  if (!r.ok) {
+    const body = await r.json().catch(() => ({}))
+    throw new ApiError(r.status, body?.error || 'No se pudo generar el archivo')
+  }
+  const disposition = r.headers.get('Content-Disposition') || ''
+  const filename = disposition.match(/filename="([^"]+)"/)?.[1] || 'plan-de-accion'
+  return { blob: await r.blob(), filename }
+}
+
 export class ApiError extends Error {
   status: number
   constructor(status: number, message: string) {
@@ -52,6 +68,10 @@ export const api = {
       body: JSON.stringify(data),
     }),
   actionPlans: () => req<{ plans: SavedPlan[] }>('/api/action-plans'),
+  exportPlan: (
+    format: 'docx' | 'pptx',
+    data: { plan: ActionPlanContent; context?: PlanContext | null },
+  ) => reqFile(`/api/action-plan/export/${format}`, data),
 }
 
 export type ActionPlanContent = {

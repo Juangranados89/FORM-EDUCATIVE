@@ -4,9 +4,12 @@ import {
   CalendarClock,
   Check,
   ClipboardEdit,
+  Download,
+  FileText,
   ListChecks,
   Save,
   Sparkles,
+  Presentation,
   Target,
   UserRound,
   Wand2,
@@ -32,6 +35,7 @@ export default function Planes() {
   const [ctx, setCtx] = useState<PlanContext | null>(null)
   const [saved, setSaved] = useState<SavedPlan[]>([])
   const [savedOk, setSavedOk] = useState(false)
+  const [exporting, setExporting] = useState<'docx' | 'pptx' | ''>('')
 
   useEffect(() => {
     api
@@ -67,6 +71,31 @@ export default function Planes() {
     await api.savePlan({ scope, target: scope === 'curso' ? target : '', title: plan.titulo, content: plan })
     setSavedOk(true)
     refreshSaved()
+  }
+
+  async function downloadPlan(
+    format: 'docx' | 'pptx',
+    content: ActionPlanContent = plan!,
+    context: PlanContext | null = ctx,
+  ) {
+    if (!content) return
+    setExporting(format)
+    setError('')
+    try {
+      const { blob, filename } = await api.exportPlan(format, { plan: content, context })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'No se pudo descargar el plan.')
+    } finally {
+      setExporting('')
+    }
   }
 
   return (
@@ -140,14 +169,32 @@ export default function Planes() {
                 </p>
               )}
             </div>
-            <button
-              onClick={save}
-              disabled={savedOk}
-              className="flex items-center gap-2 rounded-xl bg-green px-4 py-2 text-sm font-bold text-white shadow-card transition hover:brightness-105 disabled:opacity-60"
-            >
-              {savedOk ? <Check size={16} /> : <Save size={16} />}
-              {savedOk ? 'Guardado' : 'Guardar plan'}
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => downloadPlan('docx')}
+                disabled={!!exporting}
+                className="flex items-center gap-2 rounded-xl border border-primary/25 bg-primary/5 px-3 py-2 text-sm font-bold text-primary transition hover:bg-primary/10 disabled:opacity-50"
+              >
+                {exporting === 'docx' ? <Download size={16} className="animate-bounce" /> : <FileText size={16} />}
+                Word (.docx)
+              </button>
+              <button
+                onClick={() => downloadPlan('pptx')}
+                disabled={!!exporting}
+                className="flex items-center gap-2 rounded-xl border border-orange/30 bg-orange/10 px-3 py-2 text-sm font-bold text-orange transition hover:bg-orange/15 disabled:opacity-50"
+              >
+                {exporting === 'pptx' ? <Download size={16} className="animate-bounce" /> : <Presentation size={16} />}
+                Diapositivas (.pptx)
+              </button>
+              <button
+                onClick={save}
+                disabled={savedOk}
+                className="flex items-center gap-2 rounded-xl bg-green px-4 py-2 text-sm font-bold text-white shadow-card transition hover:brightness-105 disabled:opacity-60"
+              >
+                {savedOk ? <Check size={16} /> : <Save size={16} />}
+                {savedOk ? 'Guardado' : 'Guardar plan'}
+              </button>
+            </div>
           </div>
 
           <p className="mt-3 text-sm text-ink/85">{plan.resumen}</p>
@@ -233,9 +280,27 @@ export default function Planes() {
                     · {p.content.actividades.length} actividades
                   </p>
                 </div>
-                <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-bold capitalize text-primary">
-                  {p.status}
-                </span>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <button
+                    onClick={() => downloadPlan('docx', p.content, null)}
+                    disabled={!!exporting}
+                    title="Descargar Word"
+                    className="rounded-lg p-2 text-primary transition hover:bg-primary/10 disabled:opacity-40"
+                  >
+                    <FileText size={16} />
+                  </button>
+                  <button
+                    onClick={() => downloadPlan('pptx', p.content, null)}
+                    disabled={!!exporting}
+                    title="Descargar PowerPoint"
+                    className="rounded-lg p-2 text-orange transition hover:bg-orange/10 disabled:opacity-40"
+                  >
+                    <Presentation size={16} />
+                  </button>
+                  <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-bold capitalize text-primary">
+                    {p.status}
+                  </span>
+                </div>
               </div>
             ))}
           </div>

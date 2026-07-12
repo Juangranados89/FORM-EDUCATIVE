@@ -7,6 +7,11 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { PrismaClient } from '@prisma/client'
 import ExcelJS from 'exceljs'
+import {
+  buildActionPlanDocx,
+  buildActionPlanPptx,
+  isActionPlan,
+} from './actionPlanExports.js'
 
 const prisma = new PrismaClient()
 const app = express()
@@ -63,6 +68,27 @@ function repairText(value) {
   }
 }
 
+function repairGrade(value) {
+  const text = repairText(value).replace(/º/g, '°')
+  const match = text.match(/^(5|6|7|8|9|10|11)(?:°|�)?$/)
+  return match ? `${match[1]}°` : text
+}
+
+function normalizeRow(row) {
+  return {
+    ...row,
+    grade: repairGrade(row.grade),
+    course: repairText(row.course).toUpperCase(),
+    shift: repairText(row.shift).toLowerCase(),
+  }
+}
+
+function gradeVariants(value) {
+  const grade = repairGrade(value)
+  const number = grade.replace(/[^0-9]/g, '')
+  return number ? [...new Set([grade, `${number}º`, `${number}Â°`, `${number}�`, number])] : [grade]
+}
+
 const VALID_GRADES = new Set(['5°', '6°', '7°', '8°', '9°', '10°', '11°'])
 const VALID_COURSES = new Set(['A', 'B', 'C', 'D'])
 const VALID_SHIFTS = new Set(['mañana', 'tarde'])
@@ -70,7 +96,7 @@ const VALID_AGES = new Set(['10-11', '12-13', '14-15', '16-18'])
 
 function cleanProfile(profile = {}) {
   return {
-    grade: repairText(profile.grade),
+    grade: repairGrade(profile.grade),
     course: repairText(profile.course).toUpperCase(),
     shift: repairText(profile.shift).toLowerCase(),
     ageRange: repairText(profile.ageRange),
@@ -279,7 +305,7 @@ app.get('/api/stats', requireAuth, async (_req, res) => {
     // Cursos
     const byCourse = new Map()
     for (const r of rows) {
-      const grade = repairText(r.grade)
+      const grade = repairGrade(r.grade)
       const course = repairText(r.course).toUpperCase()
       const k = `${grade}|${course}`
       const c = byCourse.get(k) || { grade, course, n: 0, wb: 0, alto: 0, mod: 0 }
@@ -369,7 +395,7 @@ app.get('/api/stats', requireAuth, async (_req, res) => {
 /* ================= Filtros compartidos ================= */
 function buildWhere(q) {
   const where = {}
-  if (q.grade) where.grade = q.grade
+  if (q.grade) where.grade = { in: gradeVariants(q.grade) }
   if (q.course) where.course = q.course
   if (q.shift) where.shift = q.shift
   if (q.risk) where.riskLevel = q.risk
@@ -389,7 +415,7 @@ app.get('/api/responses', requireAuth, async (req, res) => {
       orderBy: { createdAt: 'desc' },
       take: 500,
     })
-    res.json({ rows })
+    res.json({ rows: rows.map(normalizeRow) })
   } catch (e) {
     console.error(e)
     res.status(500).json({ error: 'Error al listar respuestas' })
@@ -401,6 +427,7 @@ app.get('/api/alerts', requireAuth, async (_req, res) => {
   try {
     const rows = await prisma.response.findMany({ orderBy: { createdAt: 'desc' } })
     const alerts = rows
+      .map(normalizeRow)
       .map((r) => {
         const reasons = []
         if (r.categories.includes('planificacion')) reasons.push('Planificación')
@@ -431,13 +458,13 @@ const CRIT_LABEL = {
 // Arma un resumen compacto de los datos para pasar como contexto a la IA.
 async function buildContext(scope, target) {
   const allRows = await prisma.response.findMany()
-  const targetGrade = repairText(target.slice(0, -1))
+  const targetGrade = repairGrade(target.slice(0, -1))
   const targetCourse = repairText(target.slice(-1)).toUpperCase()
   const rows =
     scope === 'curso' && target
       ? allRows.filter(
           (r) =>
-            repairText(r.grade) === targetGrade &&
+            repairGrade(r.grade) === targetGrade &&
             repairText(r.course).toUpperCase() === targetCourse,
         )
       : allRows
@@ -582,6 +609,38 @@ app.post('/api/action-plans', requireAuth, async (req, res) => {
   }
 })
 
+app.post('/api/action-plan/export/:format', requireAuth, async (req, res) => {
+  try {
+    const { plan, context } = req.body || {}
+    if (!isActionPlan(plan)) return res.status(400).json({ error: 'El plan no tiene una estructura válida.' })
+    const format = req.params.format
+    const slug = String(plan.titulo || 'plan-de-accion')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .toLowerCase()
+      .slice(0, 70) || 'plan-de-accion'
+
+    if (format === 'docx') {
+      const file = await buildActionPlanDocx(plan, context)
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+      res.setHeader('Content-Disposition', `attachment; filename="${slug}.docx"`)
+      return res.send(file)
+    }
+    if (format === 'pptx') {
+      const file = await buildActionPlanPptx(plan, context)
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation')
+      res.setHeader('Content-Disposition', `attachment; filename="${slug}.pptx"`)
+      return res.send(file)
+    }
+    return res.status(400).json({ error: 'Formato no compatible.' })
+  } catch (e) {
+    console.error('Plan export error:', e)
+    res.status(500).json({ error: 'No se pudo generar el archivo.' })
+  }
+})
+
 /* ================= Etiquetas legibles para exportar ================= */
 const Q_TITLE = {
   colegio: '¿Cómo te sientes en el colegio?',
@@ -638,7 +697,7 @@ app.get('/api/export.xlsx', requireAuth, async (req, res) => {
     ]
     ws.columns = cols
 
-    rows.forEach((r) => {
+    rows.map(normalizeRow).forEach((r) => {
       ws.addRow({
         fecha: r.createdAt,
         grado: r.grade,
@@ -745,7 +804,7 @@ app.get('/api/export.csv', requireAuth, async (_req, res) => {
       'fecha', 'grado', 'curso', 'jornada', 'edad',
       ...QIDS, 'categorias', 'comentario', 'apoyo', 'puntaje', 'nivel_riesgo', 'alerta_critica',
     ]
-    const lines = rows.map((r) =>
+    const lines = rows.map(normalizeRow).map((r) =>
       [
         r.createdAt.toISOString(), r.grade, r.course, r.shift, r.ageRange,
         ...QIDS.map((q) => r.answers?.[q] ?? ''),
