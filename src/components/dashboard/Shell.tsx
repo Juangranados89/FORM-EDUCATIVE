@@ -21,11 +21,11 @@ type NavDef = { to: string; label: string; icon: React.ReactNode; soon?: boolean
 
 const RESULTADOS: NavDef[] = [
   { to: '/dashboard', label: 'Resumen', icon: <Home size={17} /> },
-  { to: '/dashboard/bienestar', label: 'Bienestar general', icon: <BarChart3 size={17} />, soon: true },
+  { to: '/dashboard/bienestar', label: 'Bienestar general', icon: <BarChart3 size={17} /> },
   { to: '/dashboard/emociones', label: 'Emociones y hábitos', icon: <Heart size={17} />, soon: true },
   { to: '/dashboard/factores', label: 'Factores de riesgo', icon: <ScanSearch size={17} />, soon: true },
   { to: '/dashboard/comparaciones', label: 'Comparaciones', icon: <SlidersHorizontal size={17} />, soon: true },
-  { to: '/dashboard/respuestas', label: 'Respuestas abiertas', icon: <MessageSquareText size={17} />, soon: true },
+  { to: '/dashboard/respuestas', label: 'Respuestas abiertas', icon: <MessageSquareText size={17} /> },
 ]
 const GESTION: NavDef[] = [
   { to: '/dashboard/cursos', label: 'Cursos / Grados', icon: <GraduationCap size={17} /> },
