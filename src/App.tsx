@@ -8,8 +8,10 @@ import Cursos from './pages/Cursos'
 import Respuestas from './pages/Respuestas'
 import Bienestar from './pages/Bienestar'
 import Planes from './pages/Planes'
+import Emociones from './pages/Emociones'
+import Factores from './pages/Factores'
+import Comparaciones from './pages/Comparaciones'
 import Login from './pages/Login'
-import { ComingSoon } from './components/dashboard/Shell'
 
 export default function App() {
   return (
@@ -26,10 +28,9 @@ export default function App() {
         <Route path="/dashboard/bienestar" element={<Bienestar />} />
         <Route path="/dashboard/respuestas" element={<Respuestas />} />
         <Route path="/dashboard/planes" element={<Planes />} />
-        <Route path="/dashboard/emociones" element={<ComingSoon title="Emociones y hábitos" />} />
-        <Route path="/dashboard/factores" element={<ComingSoon title="Factores de riesgo" />} />
-        <Route path="/dashboard/comparaciones" element={<ComingSoon title="Comparaciones" />} />
-        <Route path="/dashboard/planes" element={<ComingSoon title="Planes de acción" />} />
+        <Route path="/dashboard/emociones" element={<Emociones />} />
+        <Route path="/dashboard/factores" element={<Factores />} />
+        <Route path="/dashboard/comparaciones" element={<Comparaciones />} />
       </Routes>
     </BrowserRouter>
   )
