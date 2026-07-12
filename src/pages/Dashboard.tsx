@@ -246,10 +246,10 @@ function Header({ onLogout }: { onLogout: () => void }) {
           <HeaderBtn icon={<Calendar size={15} />} label={`Hasta ${hoy}`} chevron />
           <HeaderBtn icon={<Filter size={15} />} label="Filtros" />
           <a
-            href="/api/export.csv"
+            href="/api/export.xlsx"
             className="flex items-center gap-2 rounded-xl bg-primary px-3.5 py-2 text-sm font-semibold text-white shadow-card transition hover:brightness-105"
           >
-            <Download size={15} /> Exportar
+            <Download size={15} /> Exportar Excel
           </a>
         </div>
       </div>

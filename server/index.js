@@ -6,6 +6,7 @@ import { timingSafeEqual } from 'node:crypto'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { PrismaClient } from '@prisma/client'
+import ExcelJS from 'exceljs'
 
 const prisma = new PrismaClient()
 const app = express()
@@ -293,6 +294,156 @@ app.get('/api/stats', requireAuth, async (_req, res) => {
   } catch (e) {
     console.error(e)
     res.status(500).json({ error: 'Error al calcular estadísticas' })
+  }
+})
+
+/* ================= Etiquetas legibles para exportar ================= */
+const Q_TITLE = {
+  colegio: '¿Cómo te sientes en el colegio?',
+  estres: '¿Estrés reciente?',
+  dificultades: '¿Dificultades imposibles de resolver?',
+  interes: '¿Perdiste interés en actividades?',
+  descanso: '¿Deseaste dormir y no despertar?',
+  solo: '¿Te has sentido solo(a)?',
+  ausencia: '¿Los demás estarían mejor sin ti?',
+  dolor: '¿Pensaste en hacerte daño?',
+}
+const VAL_LABEL = {
+  muy_comodo: 'Muy cómodo', comodo: 'Cómodo', neutral: 'Neutral', incomodo: 'Incómodo', muy_incomodo: 'Muy incómodo',
+  nada: 'Nada', poco: 'Poco', moderado: 'Moderado', mucho: 'Mucho', demasiado: 'Demasiado',
+  nunca: 'Nunca', pocas_veces: 'Pocas veces', casi_siempre: 'Casi siempre', siempre: 'Siempre',
+}
+const CAT_LABEL = {
+  ideacion: 'Ideación', planificacion: 'Planificación', crisis_vital: 'Crisis vital',
+  entorno_familiar: 'Entorno familiar', aislamiento: 'Aislamiento', desesperanza: 'Desesperanza',
+}
+const SUP_LABEL = { si_pronto: 'Sí, lo necesito pronto', tal_vez: 'Tal vez más adelante', no_ahora: 'No por ahora' }
+const RISK_FILL = { alto: 'FFFFE2E5', moderado: 'FFFFF3CD', bajo: 'FFE6F6EC' }
+const RISK_FONT = { alto: 'FFB4232E', moderado: 'FF8A6D00', bajo: 'FF1F7A44' }
+
+/* ================= Exportar XLSX (protegido, tabla formateada) ================= */
+app.get('/api/export.xlsx', requireAuth, async (_req, res) => {
+  try {
+    const rows = await prisma.response.findMany({ orderBy: { createdAt: 'asc' } })
+    const QIDS = Object.keys(SCORES)
+    const wb = new ExcelJS.Workbook()
+    wb.creator = 'Bienestar Escolar'
+    wb.created = new Date()
+
+    /* ---- Hoja Respuestas ---- */
+    const ws = wb.addWorksheet('Respuestas', {
+      views: [{ state: 'frozen', ySplit: 1 }],
+    })
+    const cols = [
+      { header: 'Fecha', key: 'fecha', width: 20 },
+      { header: 'Grado', key: 'grado', width: 8 },
+      { header: 'Curso', key: 'curso', width: 8 },
+      { header: 'Jornada', key: 'jornada', width: 10 },
+      { header: 'Edad', key: 'edad', width: 9 },
+      ...QIDS.map((q) => ({ header: Q_TITLE[q], key: q, width: 26 })),
+      { header: 'Categorías señaladas', key: 'categorias', width: 30 },
+      { header: 'Comentario abierto', key: 'comentario', width: 45 },
+      { header: '¿Hablar con orientación?', key: 'apoyo', width: 22 },
+      { header: 'Puntaje', key: 'puntaje', width: 9 },
+      { header: 'Nivel de riesgo', key: 'riesgo', width: 15 },
+      { header: 'Alerta crítica', key: 'critica', width: 13 },
+    ]
+    ws.columns = cols
+
+    rows.forEach((r) => {
+      ws.addRow({
+        fecha: r.createdAt,
+        grado: r.grade,
+        curso: r.course,
+        jornada: r.shift,
+        edad: r.ageRange,
+        ...Object.fromEntries(QIDS.map((q) => [q, VAL_LABEL[r.answers?.[q]] ?? ''])),
+        categorias: r.categories.map((c) => CAT_LABEL[c] || c).join(', '),
+        comentario: r.openText,
+        apoyo: SUP_LABEL[r.support] || r.support,
+        puntaje: r.score,
+        riesgo: r.riskLevel,
+        critica: r.criticalFlag ? 'SÍ' : 'No',
+      })
+    })
+
+    // Encabezado con estilo
+    const head = ws.getRow(1)
+    head.height = 34
+    head.eachCell((c) => {
+      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF6754E8' } }
+      c.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 }
+      c.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true }
+      c.border = { bottom: { style: 'thin', color: { argb: 'FF4B3BC4' } } }
+    })
+
+    // Filas de datos: formato fecha, zebra, y color por nivel de riesgo
+    ws.eachRow((row, i) => {
+      if (i === 1) return
+      row.getCell('fecha').numFmt = 'yyyy-mm-dd hh:mm'
+      row.alignment = { vertical: 'middle', wrapText: true }
+      if (i % 2 === 0) {
+        row.eachCell((c) => {
+          if (!c.fill || c.fill.type !== 'pattern')
+            c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF6FAFF' } }
+        })
+      }
+      const lvl = row.getCell('riesgo').value
+      const rc = row.getCell('riesgo')
+      rc.value = lvl ? String(lvl).charAt(0).toUpperCase() + String(lvl).slice(1) : ''
+      rc.font = { bold: true, color: { argb: RISK_FONT[lvl] || 'FF64748B' } }
+      rc.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: RISK_FILL[lvl] || 'FFFFFFFF' } }
+      rc.alignment = { horizontal: 'center', vertical: 'middle' }
+      const cc = row.getCell('critica')
+      if (cc.value === 'SÍ') {
+        cc.font = { bold: true, color: { argb: 'FFB4232E' } }
+        cc.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFE2E5' } }
+      }
+      cc.alignment = { horizontal: 'center' }
+      row.getCell('puntaje').alignment = { horizontal: 'center' }
+    })
+
+    // Autofiltro sobre toda la tabla
+    ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: cols.length } }
+
+    /* ---- Hoja Resumen ---- */
+    const rs = wb.addWorksheet('Resumen')
+    rs.columns = [{ width: 26 }, { width: 14 }, { width: 14 }]
+    const total = rows.length || 1
+    const nAlto = rows.filter((r) => r.riskLevel === 'alto').length
+    const nMod = rows.filter((r) => r.riskLevel === 'moderado').length
+    const nBajo = rows.filter((r) => r.riskLevel === 'bajo').length
+    const title = rs.addRow(['Panel de Bienestar Escolar — Resumen'])
+    title.font = { bold: true, size: 14, color: { argb: 'FF6754E8' } }
+    rs.addRow([`Generado: ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`]).font = {
+      color: { argb: 'FF64748B' },
+    }
+    rs.addRow([])
+    const th = rs.addRow(['Indicador', 'Cantidad', '%'])
+    th.eachCell((c) => {
+      c.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF6754E8' } }
+    })
+    const pct = (n) => `${Math.round((n / total) * 100)}%`
+    ;[
+      ['Total de respuestas', rows.length, '100%'],
+      ['Riesgo bajo', nBajo, pct(nBajo)],
+      ['Riesgo moderado', nMod, pct(nMod)],
+      ['Riesgo alto', nAlto, pct(nAlto)],
+      ['Con alerta crítica', rows.filter((r) => r.criticalFlag).length, ''],
+      ['Solicitan hablar pronto', rows.filter((r) => r.support === 'si_pronto').length, ''],
+    ].forEach((r) => rs.addRow(r))
+
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
+    res.setHeader('Content-Disposition', 'attachment; filename="bienestar-escolar.xlsx"')
+    await wb.xlsx.write(res)
+    res.end()
+  } catch (e) {
+    console.error(e)
+    res.status(500).json({ error: 'Error al exportar' })
   }
 })
 
