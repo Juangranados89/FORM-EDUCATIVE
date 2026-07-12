@@ -72,7 +72,7 @@ export default function Dashboard() {
       )}
       {stats?.empty && (
         <div className="mt-16 flex flex-col items-center gap-3 text-center">
-          <img src={DASSET('next_plant.png')} alt="" className="h-24" />
+          <img src={DASSET('next_plant_full.png')} alt="" className="h-24 w-24 object-contain" />
           <p className="font-display text-lg font-bold">Aún no hay respuestas</p>
           <p className="max-w-sm text-sm text-muted">
             Cuando los estudiantes envíen la encuesta, verás aquí los resultados
@@ -591,7 +591,7 @@ function NextStepsCard() {
   return (
     <div className="flex flex-col gap-4 rounded-2xl border border-green/15 bg-white p-5 shadow-card sm:flex-row sm:items-center">
       <span className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-green/5 p-2">
-        <img src={DASSET('next_plant.png')} alt="Próximos pasos" className="h-full w-full object-contain" />
+        <img src={DASSET('next_plant_full.png')} alt="Próximos pasos" className="h-full w-full object-contain" />
       </span>
       <div className="min-w-0 flex-1">
         <p className="font-display text-[15px] font-bold text-ink">¿Qué sigue?</p>

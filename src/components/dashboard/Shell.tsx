@@ -81,7 +81,7 @@ export default function Shell({
           <p className="font-display text-[15px] font-bold">¿Necesitas ayuda?</p>
           <p className="mt-1 text-xs text-muted">Recursos y guías para acompañar a los estudiantes.</p>
           <div className="mx-auto mt-3 flex h-24 w-full items-center justify-center overflow-hidden rounded-xl bg-orange/5 p-2">
-            <img src={DASSET('help_orientadora.png')} alt="Orientación y acompañamiento" className="h-full w-full object-contain" />
+            <img src={DASSET('help_orientadora_full.png')} alt="Orientación y acompañamiento" className="h-full w-full object-contain" />
           </div>
         </div>
       </aside>
